@@ -177,36 +177,40 @@ export const drawNextBall = async () => {
     return next;
 };
 
-export const verifyBingoWin = async (winner: any, currentWinners: any[] = []) => {
+export const verifyBingoWin = async (winner: any) => {
     const gameRef = ref(realtimeDb, GAME_STATE_PATH);
+    const snap = await get(gameRef);
+    if (!snap.exists()) throw new Error("No hay juego activo.");
 
-    return runTransaction(gameRef, (data: GameState | null) => {
-        if (!data) return;
+    const data = snap.val() as GameState;
+    const allWinners = data.winners || [];
 
-        const allWinners = data.winners || [];
-        const alreadyVerified = allWinners.filter(w => w.verified);
-        const otherPending = allWinners.filter(w => !w.verified && !(w.userId === winner.userId && w.timestamp === winner.timestamp));
-        const linkedTickets = allWinners.filter(w => !w.verified && w.userId === winner.userId && w.timestamp === winner.timestamp);
+    const alreadyVerified = allWinners.filter(w => w.verified);
+    const otherPending = allWinners.filter(w => !w.verified && w.ticketId !== winner.ticketId);
 
-        const ticketsToVerify = linkedTickets.length > 0 ? linkedTickets : [winner];
+    // Find the current winner group (multi-tickets) correctly
+    const ticketsToVerify = allWinners.filter(w => !w.verified && (
+        (w.userId === winner.userId && w.timestamp === winner.timestamp) ||
+        w.ticketId === winner.ticketId
+    ));
 
-        // Create verified entries
-        const verifiedEntries = ticketsToVerify.map((t, idx) => ({
-            ...t,
-            verified: true,
-            prizePosition: alreadyVerified.length + 1 + idx,
-            payoutStatus: 'pending_info'
-        }));
+    if (ticketsToVerify.length === 0) throw new Error("No se encontró el cartón a validar.");
 
-        // Final list
-        const newWinnersList = [...alreadyVerified, ...verifiedEntries, ...otherPending];
+    const verifiedEntries = ticketsToVerify.map((t, idx) => ({
+        ...t,
+        verified: true,
+        prizePosition: alreadyVerified.length + 1 + idx,
+        payoutStatus: 'pending_info'
+    }));
 
-        // Rule: Only Full House supported -> Confirming a winner always FINISHES the game
-        data.status = 'finished';
-        data.winners = newWinnersList;
+    const newWinnersList = [...alreadyVerified, ...verifiedEntries, ...otherPending];
 
-        return data;
+    await update(gameRef, {
+        status: 'finished',
+        winners: newWinnersList
     });
+
+    return { committed: true };
 };
 
 export const rejectBingoWin = async (winner: any) => {

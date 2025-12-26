@@ -176,13 +176,15 @@ export default function DrawControl() {
     };
 
     const handleRejectWin = async (winner: NonNullable<GameState['winners']>[0]) => {
-        if (!window.confirm("¿Seguro que deseas RECHAZAR este reclamo? El juego se reanudará.")) return;
+        if (typeof window === 'undefined') return;
+        if (!window.confirm("¿Rechazar este reclamo y reanudar el sorteo?")) return;
 
         setIsConfirming(true);
         try {
             await rejectBingoWin(winner);
-        } catch (error: any) {
-            console.error("Error rechazando premio:", error);
+            console.log("Reclamo rechazado.");
+        } catch (err) {
+            console.error("Reject error:", err);
             window.alert("Error al procesar el rechazo.");
         } finally {
             setIsConfirming(false);
