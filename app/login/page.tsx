@@ -6,7 +6,9 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { autoAuthWithEmail, loginWithEmail, registerWithEmail } from "@/lib/firebase/auth-actions";
 import { Mail, Lock, CheckCircle2, AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
 
-export default function LoginPage() {
+import { Suspense } from "react";
+
+function LoginFormContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const { user } = useAuth();
@@ -64,8 +66,6 @@ export default function LoginPage() {
             }
 
             if (result.success) {
-                // Success - Redirect handled by auth state watcher usually, 
-                // but we can push just in case
                 router.push('/dashboard');
             } else {
                 setError(result.error || "Ocurrió un error inesperado");
@@ -221,5 +221,17 @@ export default function LoginPage() {
                 </div>
             </motion.div>
         </div>
+    );
+}
+
+export default function LoginPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+                <Loader2 className="animate-spin text-orange-500" size={40} />
+            </div>
+        }>
+            <LoginFormContent />
+        </Suspense>
     );
 }
