@@ -238,20 +238,16 @@ export default function Dashboard() {
                         </>
                     )}
 
-                    {/* Modals & Loaders */}
-                    <AnimatePresence>
-                        {isPaymentModalOpen && (
+                    {/* Modals & Loaders Layer - Optimized for non-interference */}
+                    <AnimatePresence mode="wait">
+                        {isPaymentModalOpen ? (
                             <PaymentModal
                                 key="payment-modal"
                                 isOpen={isPaymentModalOpen}
                                 onClose={() => setIsPaymentModalOpen(false)}
                                 onSuccess={handlePaymentReported}
                             />
-                        )}
-                    </AnimatePresence>
-
-                    <AnimatePresence>
-                        {showApprovalLoader && (
+                        ) : showApprovalLoader ? (
                             <ApprovalLoader
                                 key="approval-loader"
                                 isVisible={showApprovalLoader}
@@ -259,7 +255,7 @@ export default function Dashboard() {
                                 onApproved={handleApprovalSuccess}
                                 onRetry={handleRetryPayment}
                             />
-                        )}
+                        ) : null}
                     </AnimatePresence>
 
                 </main>
