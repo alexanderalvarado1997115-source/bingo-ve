@@ -30,28 +30,42 @@ export default function Dashboard() {
         setTickets(t);
     };
 
-    // Subscriptions
-    useEffect(() => {
-        const unsubConn = subscribeToConnection(setIsConnected);
-        return () => unsubConn();
-    }, []);
-
-    // 1. Tickets & Presence (Initial Load & Updates)
+    // Unified Subscriptions for Stability and Performance
     useEffect(() => {
         if (!user) return;
+
+        // 1. Initial Presence & Tickets
         trackPresence(user.uid);
         loadTickets();
-    }, [user]);
 
-    // 2. Game Subscription (Independent)
-    useEffect(() => {
+        // 2. Real-time Game Subscription
         const unsubGame = subscribeToGame((state) => {
             setGameState(state);
-            // Auto enter check can rely on state, but avoiding tickets dep loop here is safer. 
-            // We handle redirection in other logical flows.
         });
-        return () => unsubGame();
-    }, []);
+
+        // 3. Real-time Payment Status Listener
+        const unsubPayment = subscribeToUserPaymentStatus(user.uid, (status) => {
+            setPaymentStatus(status);
+
+            // Auto-show loader for pending payments
+            if (status === 'pending') {
+                setShowApprovalLoader(true);
+            }
+
+            // Silent reload of tickets on approval
+            if (status === 'approved') {
+                loadTickets();
+            }
+        });
+
+        const unsubConn = subscribeToConnection(setIsConnected);
+
+        return () => {
+            unsubGame();
+            unsubPayment();
+            unsubConn();
+        };
+    }, [user]);
 
     // 3. Auto-Enter Room Logic (Reactive to game/tickets)
     useEffect(() => {
@@ -61,26 +75,7 @@ export default function Dashboard() {
         }
     }, [gameState?.status, tickets.length]);
 
-    // 4. Payment Subscription (Strictly User Dependent)
-    useEffect(() => {
-        if (!user) return;
-
-        const unsubPayment = subscribeToUserPaymentStatus(user.uid, (status, paymentId) => {
-            setPaymentStatus(status);
-
-            // Handle pending loader
-            if (status === 'pending') {
-                setShowApprovalLoader(true);
-            }
-
-            // Reload tickets if approved (silent update)
-            if (status === 'approved') {
-                loadTickets();
-            }
-        });
-
-        return () => unsubPayment();
-    }, [user]);
+    // (Merged into one subscription effect above for stability)
 
     // Formatters
     const formatTime = (timestamp?: number) => {
@@ -244,18 +239,28 @@ export default function Dashboard() {
                     )}
 
                     {/* Modals & Loaders */}
-                    <PaymentModal
-                        isOpen={isPaymentModalOpen}
-                        onClose={() => setIsPaymentModalOpen(false)}
-                        onSuccess={handlePaymentReported}
-                    />
+                    <AnimatePresence>
+                        {isPaymentModalOpen && (
+                            <PaymentModal
+                                key="payment-modal"
+                                isOpen={isPaymentModalOpen}
+                                onClose={() => setIsPaymentModalOpen(false)}
+                                onSuccess={handlePaymentReported}
+                            />
+                        )}
+                    </AnimatePresence>
 
-                    <ApprovalLoader
-                        isVisible={showApprovalLoader}
-                        status={paymentStatus === 'none' ? 'pending' : paymentStatus}
-                        onApproved={handleApprovalSuccess}
-                        onRetry={handleRetryPayment}
-                    />
+                    <AnimatePresence>
+                        {showApprovalLoader && (
+                            <ApprovalLoader
+                                key="approval-loader"
+                                isVisible={showApprovalLoader}
+                                status={paymentStatus === 'none' ? 'pending' : paymentStatus}
+                                onApproved={handleApprovalSuccess}
+                                onRetry={handleRetryPayment}
+                            />
+                        )}
+                    </AnimatePresence>
 
                 </main>
             </div>

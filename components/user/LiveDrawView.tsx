@@ -473,7 +473,11 @@ export default function LiveDrawView({ gameState: initialGameState, tickets, onE
                     <h2 className="text-xl font-bold text-white">Mis Cartones Activos</h2>
                     {tickets.length > 0 && (
                         <button
-                            onClick={onBuyTickets}
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onBuyTickets();
+                            }}
                             className="bg-slate-800 hover:bg-slate-700 text-orange-500 text-xs font-black uppercase tracking-widest px-4 py-2 rounded-xl transition-colors"
                         >
                             + Comprar Más
@@ -493,7 +497,11 @@ export default function LiveDrawView({ gameState: initialGameState, tickets, onE
                             </p>
                         </div>
                         <button
-                            onClick={onBuyTickets}
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onBuyTickets();
+                            }}
                             className="bg-orange-500 hover:bg-orange-400 text-white font-black py-4 px-8 rounded-2xl shadow-lg shadow-orange-500/20 transition-all transform hover:scale-105"
                         >
                             COMPRAR CARTONES
