@@ -44,6 +44,12 @@ export interface GameState {
             whatsapp?: string;
         };
     }[];
+    socialStatus?: {
+        message: string;
+        tensionLevel: 'low' | 'medium' | 'high' | 'imminent';
+        topPlayers: { name: string, missing: number }[];
+        lastUpdate: number;
+    };
 }
 
 // --- Presence System ---
@@ -168,13 +174,55 @@ export const drawNextBall = async () => {
 
     const newHistory = [...history, next];
 
+    // --- Referee Logic (Tension Detection) ---
+    let tensionLevel: 'low' | 'medium' | 'high' | 'imminent' = 'low';
+    let message = `Sorteo en curso... Bola # ${newHistory.length}: [ ${next} ]`;
+    let topPlayers: { name: string, missing: number }[] = [];
+
+    try {
+        const ticketsSnap = await getDocs(collection(db, "tickets"));
+        const tickets = ticketsSnap.docs.map(d => d.data());
+
+        const projections = tickets.map(t => {
+            const missing = t.numbers.filter((n: number) => !newHistory.includes(n)).length;
+            // Get name from user meta or generic
+            return {
+                name: t.userName || `Jugador...${t.userId.slice(-4)}`,
+                missing
+            };
+        });
+
+        const minMissing = Math.min(...projections.map(p => p.missing), 25);
+        topPlayers = projections.filter(p => p.missing <= 3).sort((a, b) => a.missing - b.missing).slice(0, 5);
+
+        if (minMissing === 1) {
+            tensionLevel = 'imminent';
+            message = `🔥 ¡TENSIÓN MÁXIMA! Con la bola ${next}, alguien está a punto de cantar BINGO.`;
+        } else if (minMissing <= 3) {
+            tensionLevel = 'high';
+            message = `⚠️ ¡ATENCIÓN! El sistema detecta ganadores inminentes con la bola ${next}.`;
+        } else if (newHistory.length > 35) {
+            tensionLevel = 'medium';
+            message = `⏳ El sorteo avanza... Ya han salido ${newHistory.length} bolas y el botín busca dueño.`;
+        }
+    } catch (err) {
+        console.error("Referee Analysis Error:", err);
+    }
+
     await update(ref(realtimeDb, GAME_STATE_PATH), {
         currentNumber: next,
         history: newHistory,
-        lastBallTime: Date.now()
+        lastBallTime: Date.now(),
+        socialStatus: {
+            message,
+            tensionLevel,
+            topPlayers,
+            lastUpdate: Date.now()
+        }
     });
 
-    return next;
+    const nextBall = next;
+    return nextBall;
 };
 
 export const verifyBingoWin = async (winner: any) => {
@@ -220,7 +268,13 @@ export const verifyBingoWin = async (winner: any) => {
     try {
         await update(gameRef, {
             status: 'finished',
-            winners: newWinnersList
+            winners: newWinnersList,
+            socialStatus: {
+                message: `🏆 ¡BINGO CONFIRMADO! Felicidades al ganador.`,
+                tensionLevel: 'low',
+                topPlayers: [],
+                lastUpdate: Date.now()
+            }
         });
         console.log("SERVER: Actualización en Firebase exitosa.");
     } catch (firebaseErr: any) {
@@ -242,6 +296,12 @@ export const rejectBingoWin = async (winner: any) => {
 
         data.status = hasMorePending ? 'validating' : 'active';
         data.winners = updatedWinners;
+        data.socialStatus = {
+            message: hasMorePending ? "⚠️ Cartón rechazado. Revisando otros reclamos..." : "❌ Cartón rechazado. ¡El sorteo continúa!",
+            tensionLevel: hasMorePending ? 'high' : 'medium',
+            topPlayers: data.socialStatus?.topPlayers || [],
+            lastUpdate: Date.now()
+        };
 
         return data;
     });
@@ -303,11 +363,17 @@ export const fullResetSystem = async () => {
             history: [],
             lastBallTime: Date.now(),
             countdownStartTime: null,
-            drawId: `BINGO_RESET_${Date.now()}`,
+            drawId: `RESET_${Date.now()}`,
             winners: [],
+            socialStatus: {
+                message: "¡Mesa limpia! Nueva jugada abierta.",
+                tensionLevel: 'low',
+                topPlayers: [],
+                lastUpdate: Date.now()
+            },
             config: {
                 price: 100,
-                prizes: [500, 350, 200, 150, 100],
+                prizes: [500],
                 startTime: "20:00",
                 playersCount: 0,
                 totalTickets: 0,
@@ -460,6 +526,12 @@ export const claimBingo = async (userId: string, claims: { ticketId: string, num
 
             currentData.status = 'validating';
             currentData.winners = [...winners, ...newEntries];
+            currentData.socialStatus = {
+                message: `📢 ¡BINGO CANTADO! Validando cartón...`,
+                tensionLevel: 'imminent',
+                topPlayers: currentData.socialStatus?.topPlayers || [],
+                lastUpdate: Date.now()
+            };
 
             return currentData;
         });

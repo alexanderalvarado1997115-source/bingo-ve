@@ -20,7 +20,15 @@ export const getPendingPayments = async () => {
 
 export const approvePayment = async (paymentId: string, userId: string, ticketsCount: number, drawId: string) => {
     try {
+        const { realtimeDb } = await import("./config");
+        const { ref, get, update } = await import("firebase/database");
+
         const batch = writeBatch(db);
+
+        // 0. Get User display name for the tickets (helps the referee bot)
+        const userSnap = await getDocs(query(collection(db, "users"), where("uid", "==", userId)));
+        const userData = userSnap.docs[0]?.data();
+        const userName = userData?.displayName || userData?.email?.split('@')[0] || "Jugador";
 
         // 1. Reference to payment
         const paymentRef = doc(db, "payments", paymentId);
@@ -36,8 +44,6 @@ export const approvePayment = async (paymentId: string, userId: string, ticketsC
             const ticketRef = doc(ticketsCollectionRef);
             const matrix = generateBingoCard75();
 
-            // TRANSPOSE TO ROW-MAJOR for correct grid rendering and logic
-            // Matrix is col-major currently. We need [row1, row2, row3, row4, row5]
             const rowMajor = [];
             for (let r = 0; r < 5; r++) {
                 for (let c = 0; c < 5; c++) {
@@ -47,6 +53,7 @@ export const approvePayment = async (paymentId: string, userId: string, ticketsC
 
             batch.set(ticketRef, {
                 userId,
+                userName, // Saved for Social/Bot analysis
                 drawId: drawId,
                 matrix: rowMajor,
                 numbers: rowMajor.filter(n => n !== 0),
@@ -56,6 +63,28 @@ export const approvePayment = async (paymentId: string, userId: string, ticketsC
         }
 
         await batch.commit();
+
+        // 3. Update Realtime Database Total Counter & Check Auto-Start
+        const gameRef = ref(realtimeDb, "game/active");
+        const gameSnap = await get(gameRef);
+        if (gameSnap.exists()) {
+            const gameState = gameSnap.val();
+            const config = gameState.config || {};
+            const newTotal = (config.totalTickets || 0) + ticketsCount;
+            const maxGoal = config.maxTickets || 90;
+
+            await update(ref(realtimeDb, "game/active/config"), {
+                totalTickets: newTotal
+            });
+
+            // "Swiss Watch" Logic: If target is met, START!
+            if (newTotal >= maxGoal && gameState.status === 'waiting') {
+                await update(gameRef, {
+                    status: 'countdown',
+                    countdownStartTime: Date.now()
+                });
+            }
+        }
 
         return { success: true };
     } catch (error) {

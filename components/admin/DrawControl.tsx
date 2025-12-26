@@ -433,7 +433,7 @@ export default function DrawControl() {
                 {/* STATS AREA */}
                 <div className="grid grid-cols-2 gap-4">
                     <StatBox icon={<Users size={14} />} label="Online" value={onlineCount} color="green" />
-                    <StatBox icon={<Ticket size={14} />} label="Ventas" value={totalTickets} color="indigo" />
+                    <StatBox icon={<Ticket size={14} />} label="Ventas" value={`${gameState.config.totalTickets} / ${gameState.config.maxTickets}`} color="indigo" />
                     <StatBox icon={<BarChart3 size={14} />} label="Capital" value={`${totalRevenue} Bs`} color="blue" />
                     <StatBox icon={<Trophy size={14} />} label="Premios" value={`${gameState.config.prizes.reduce((a, b) => a + b, 0)} Bs`} color="orange" />
                 </div>
@@ -483,46 +483,82 @@ export default function DrawControl() {
                             </div>
 
                             {/* Center Monitor */}
-                            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-[#161822] rounded-[3rem] border border-white/5 mb-8 relative group">
-                                <div className="absolute top-0 left-0 w-full h-2 bg-slate-900 rounded-t-[3rem] overflow-hidden">
-                                    {((gameState.status === 'active' && gameState.mode === 'auto') || gameState.status === 'countdown') && (
-                                        <motion.div
-                                            className={`h-full ${gameState.status === 'countdown' ? 'bg-orange-500' : 'bg-indigo-500'}`}
-                                            initial={false}
-                                            animate={{ width: gameState.status === 'countdown' ? `${(countdownSeconds / 300) * 100}%` : `${(timeLeft / DRAW_INTERVAL) * 100}%` }}
-                                            transition={{ duration: 1, ease: "linear" }}
-                                        />
+                            <div className="grid grid-cols-3 gap-8 mb-8">
+                                <div className="col-span-2 flex flex-col items-center justify-center p-8 bg-[#161822] rounded-[3rem] border border-white/5 relative group min-h-[300px]">
+                                    <div className="absolute top-0 left-0 w-full h-2 bg-slate-900 rounded-t-[3rem] overflow-hidden">
+                                        {((gameState.status === 'active' && gameState.mode === 'auto') || gameState.status === 'countdown') && (
+                                            <motion.div
+                                                className={`h-full ${gameState.status === 'countdown' ? 'bg-orange-500' : 'bg-indigo-500'}`}
+                                                initial={false}
+                                                animate={{ width: gameState.status === 'countdown' ? `${(countdownSeconds / 300) * 100}%` : `${(timeLeft / DRAW_INTERVAL) * 100}%` }}
+                                                transition={{ duration: 1, ease: "linear" }}
+                                            />
+                                        )}
+                                    </div>
+
+                                    {gameState.status === 'countdown' ? (
+                                        <div className="text-center">
+                                            <div className="text-orange-500 text-[10px] font-black uppercase tracking-[0.4em] mb-4 animate-pulse italic">Iniciando en...</div>
+                                            <div className="text-7xl font-black text-white">{formatTime(countdownSeconds)}</div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center relative">
+                                            <div className="text-slate-500 text-[10px] font-black uppercase tracking-[0.4em] mb-2">{gameState.status === 'waiting' ? 'ESTADO' : 'ÚLTIMA BOLA'}</div>
+                                            <div className={`text-9xl font-black transition-all duration-300 ${gameState.status === 'waiting' ? 'text-slate-800' : 'text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.15)]'}`}>
+                                                {gameState.status === 'waiting' ? 'READY' : (gameState.currentNumber || '00')}
+                                            </div>
+
+                                            {gameState.status === 'active' && (
+                                                <div className="mt-8">
+                                                    {gameState.mode === 'auto' ? (
+                                                        <div className="flex items-center gap-2 px-4 py-2 bg-indigo-500/10 rounded-full border border-indigo-500/10">
+                                                            <Clock size={12} className="text-indigo-400" />
+                                                            <span className="text-[11px] font-black text-indigo-400 font-mono">SIGUIENTE EN {timeLeft}S</span>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="px-4 py-2 bg-orange-500/10 rounded-full border border-orange-500/10">
+                                                            <span className="text-[11px] font-black text-orange-400 uppercase tracking-widest">ESPERANDO ADMIN</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
 
-                                {gameState.status === 'countdown' ? (
-                                    <div className="text-center">
-                                        <div className="text-orange-500 text-[10px] font-black uppercase tracking-[0.4em] mb-4 animate-pulse italic">Iniciando en...</div>
-                                        <div className="text-7xl font-black text-white">{formatTime(countdownSeconds)}</div>
+                                {/* Referee Side Panel */}
+                                <div className="bg-[#161822] p-6 rounded-[2.5rem] border border-white/5 space-y-4">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Barómetro</span>
+                                        <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase text-white ${gameState.socialStatus?.tensionLevel === 'imminent' ? 'bg-red-500 animate-pulse shadow-lg shadow-red-500/30' :
+                                                gameState.socialStatus?.tensionLevel === 'high' ? 'bg-orange-500' :
+                                                    gameState.socialStatus?.tensionLevel === 'medium' ? 'bg-blue-500' : 'bg-slate-800'
+                                            }`}>
+                                            {gameState.socialStatus?.tensionLevel || 'Bajo'}
+                                        </span>
                                     </div>
-                                ) : (
-                                    <div className="text-center relative">
-                                        <div className="text-slate-500 text-[10px] font-black uppercase tracking-[0.4em] mb-2">{gameState.status === 'waiting' ? 'LISTO PARA' : 'ÚLTIMA BOLA'}</div>
-                                        <div className={`text-9xl font-black transition-all duration-300 ${gameState.status === 'waiting' ? 'text-slate-800' : 'text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.15)]'}`}>
-                                            {gameState.currentNumber || '00'}
-                                        </div>
+                                    <div className="text-[11px] text-white/80 font-medium italic border-l-2 border-indigo-500 pl-4 py-1 leading-relaxed">
+                                        "{gameState.socialStatus?.message || 'Esperando inicio de sorteo...'}"
+                                    </div>
 
-                                        {gameState.status === 'active' && (
-                                            <div className="mt-8">
-                                                {gameState.mode === 'auto' ? (
-                                                    <div className="flex items-center gap-2 px-4 py-2 bg-indigo-500/10 rounded-full border border-indigo-500/10">
-                                                        <Clock size={12} className="text-indigo-400" />
-                                                        <span className="text-[11px] font-black text-indigo-400 font-mono">SIGUIENTE EN {timeLeft}S</span>
+                                    <div className="pt-2 space-y-2">
+                                        <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">Top Jugadores Cerca</span>
+                                        {gameState.socialStatus?.topPlayers?.length ? (
+                                            <div className="space-y-1.5">
+                                                {gameState.socialStatus.topPlayers.map((p: any, i: number) => (
+                                                    <div key={i} className="flex justify-between items-center text-[10px] bg-white/5 p-2 rounded-xl">
+                                                        <span className="text-slate-400 truncate max-w-[80px]">{p.name}</span>
+                                                        <span className="text-indigo-400 font-black">-{p.missing}</span>
                                                     </div>
-                                                ) : (
-                                                    <div className="px-4 py-2 bg-orange-500/10 rounded-full border border-orange-500/10">
-                                                        <span className="text-[11px] font-black text-orange-400 uppercase tracking-widest">ESPERANDO ADMIN</span>
-                                                    </div>
-                                                )}
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="text-[9px] text-slate-700 font-bold uppercase py-4 text-center border-2 border-dashed border-white/5 rounded-2xl">
+                                                Sin datos aún
                                             </div>
                                         )}
                                     </div>
-                                )}
+                                </div>
                             </div>
 
                             {/* Main Action Buttons */}
