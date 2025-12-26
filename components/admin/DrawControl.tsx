@@ -2,8 +2,8 @@
 import { useState, useEffect, useRef } from "react";
 import { ref, update } from "firebase/database";
 import { realtimeDb } from "@/lib/firebase/config";
-import { startCountdown, finishCountdown, pauseGame, drawNextBall, subscribeToGame, GameState, initializeGame, addWinner, updateGameMode, updateGameConfig, subscribeToOnlineCount, subscribeToConnection, fullResetSystem, archiveCurrentGame, markWinnerAsPaid } from "@/lib/firebase/game-actions";
-import { Play, Pause, FastForward, Timer, Settings, Users, MousePointer2, Zap, Save, X, Plus, Minus, SkipForward, Archive, Copy, CheckCircle, CreditCard, Smartphone, User, Volume2, VolumeX, AlertTriangle, Trophy, BarChart3, Clock, Ticket } from "lucide-react";
+import { startCountdown, finishCountdown, pauseGame, drawNextBall, subscribeToGame, GameState, initializeGame, addWinner, updateGameMode, updateGameConfig, subscribeToOnlineCount, subscribeToConnection, fullResetSystem, archiveCurrentGame, markWinnerAsPaid, verifyBingoWin, rejectBingoWin } from "@/lib/firebase/game-actions";
+import { Play, Pause, FastForward, Timer, Settings, Users, MousePointer2, Zap, Save, X, Plus, Minus, SkipForward, Archive, Copy, CheckCircle, CreditCard, Smartphone, User, Volume2, VolumeX, AlertTriangle, Trophy, BarChart3, Clock, Ticket, CheckCircle2 } from "lucide-react";
 import { getAllActiveTickets } from "@/lib/firebase/admin-actions";
 import { checkWinner, getWinningDetails } from "@/utils/game-logic";
 import { motion, AnimatePresence } from "framer-motion";
@@ -152,62 +152,41 @@ export default function DrawControl() {
 
     const handleConfirmWin = async (winner: NonNullable<GameState['winners']>[0]) => {
         const isMulti = winner.multiClaimCount && winner.multiClaimCount > 1;
-        const confirmResult = confirm(`¿Confirmar BINGO para este usuario?\n${isMulti ? 'RECLAMO MÚLTIPLE: ' + winner.multiClaimCount + ' Cartones' : '1 Cartón'}`);
+        const confirmResult = window.confirm(`¿Confirmar BINGO para este usuario?\n${isMulti ? 'RECLAMO MÚLTIPLE: ' + winner.multiClaimCount + ' Cartones' : '1 Cartón'}`);
 
         if (!confirmResult) return;
 
         setIsConfirming(true);
         try {
-            console.log("Iniciando confirmación de premio...", winner.userId);
+            console.log("Validando ganador vía backend...");
+            const result = await verifyBingoWin(winner);
 
-            // 1. Get all winners currently in the DB
-            const allWinners = gameState?.winners || [];
-
-            // 2. Separate verified, the current group (linked), and OTHER pending
-            const alreadyVerified = allWinners.filter(w => w.verified);
-            const otherPending = allWinners.filter(w => !w.verified && !(w.userId === winner.userId && w.timestamp === winner.timestamp));
-            const linkedTickets = allWinners.filter(w => !w.verified && w.userId === winner.userId && w.timestamp === winner.timestamp);
-
-            const ticketsToVerify = linkedTickets.length > 0 ? linkedTickets : [winner];
-
-            // 3. Create the verified entries
-            const verifiedEntries = ticketsToVerify.map((t, idx) => ({
-                ...t,
-                verified: true,
-                prizePosition: alreadyVerified.length + 1 + idx,
-                payoutStatus: 'pending_info'
-            }));
-
-            // 4. Combine: Previously verified + New verified + Other pending
-            const newWinnersList = [...alreadyVerified, ...verifiedEntries, ...otherPending];
-
-            // 5. Update Game State: Since we ONLY play Full House, confirming a winner ALWAYS finishes the game.
-            await update(ref(realtimeDb, GAME_STATE_PATH), {
-                status: 'finished',
-                winners: newWinnersList
-            });
-
-            console.log("Premio confirmado exitosamente.");
-            playSound('victory');
+            if (result.committed) {
+                console.log("Bingo confirmado correctamente.");
+                playSound('victory');
+            } else {
+                throw new Error("La transacción de Firebase fue cancelada o falló.");
+            }
         } catch (error: any) {
             console.error("Error confirmando premio:", error);
-            alert("⚠️ ERROR CRÍTICO: No se pudo conectar con la base de datos. Revisa tu internet o los permisos de Firebase.\nDetalle: " + error.message);
+            window.alert("⚠️ ERROR DE CONEXIÓN: No se pudo validar el premio.\n" + error.message);
         } finally {
             setIsConfirming(false);
         }
     };
 
     const handleRejectWin = async (winner: NonNullable<GameState['winners']>[0]) => {
-        if (!gameState?.winners) return;
+        if (!window.confirm("¿Seguro que deseas RECHAZAR este reclamo? El juego se reanudará.")) return;
 
-        // Remove all linked tickets in case of multi-claim rejection
-        const updatedQueue = gameState.winners.filter(w => !(w.userId === winner.userId && w.timestamp === winner.timestamp));
-        const hasMorePending = updatedQueue.some(w => !w.verified);
-
-        await update(ref(realtimeDb, GAME_STATE_PATH), {
-            status: hasMorePending ? 'validating' : 'active',
-            winners: updatedQueue
-        });
+        setIsConfirming(true);
+        try {
+            await rejectBingoWin(winner);
+        } catch (error: any) {
+            console.error("Error rechazando premio:", error);
+            window.alert("Error al procesar el rechazo.");
+        } finally {
+            setIsConfirming(false);
+        }
     };
 
     const handleMarkPaid = async (ticketId: string) => {
@@ -305,7 +284,8 @@ export default function DrawControl() {
                             <div className="flex gap-4 pt-2">
                                 <button
                                     onClick={() => handleRejectWin(claim)}
-                                    className="flex-1 bg-white/5 hover:bg-red-500/10 text-slate-400 hover:text-red-500 py-4 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] border border-white/5 transition-all"
+                                    disabled={isConfirming}
+                                    className="flex-1 bg-white/5 hover:bg-red-500/10 text-slate-400 hover:text-red-500 py-4 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] border border-white/5 transition-all disabled:opacity-50"
                                 >
                                     RECHAZAR {claim.multiClaimCount && claim.multiClaimCount > 1 ? 'TODOS' : ''}
                                 </button>

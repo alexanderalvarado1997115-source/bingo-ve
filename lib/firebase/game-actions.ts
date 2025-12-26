@@ -177,7 +177,56 @@ export const drawNextBall = async () => {
     return next;
 };
 
+export const verifyBingoWin = async (winner: any, currentWinners: any[] = []) => {
+    const gameRef = ref(realtimeDb, GAME_STATE_PATH);
+
+    return runTransaction(gameRef, (data: GameState | null) => {
+        if (!data) return;
+
+        const allWinners = data.winners || [];
+        const alreadyVerified = allWinners.filter(w => w.verified);
+        const otherPending = allWinners.filter(w => !w.verified && !(w.userId === winner.userId && w.timestamp === winner.timestamp));
+        const linkedTickets = allWinners.filter(w => !w.verified && w.userId === winner.userId && w.timestamp === winner.timestamp);
+
+        const ticketsToVerify = linkedTickets.length > 0 ? linkedTickets : [winner];
+
+        // Create verified entries
+        const verifiedEntries = ticketsToVerify.map((t, idx) => ({
+            ...t,
+            verified: true,
+            prizePosition: alreadyVerified.length + 1 + idx,
+            payoutStatus: 'pending_info'
+        }));
+
+        // Final list
+        const newWinnersList = [...alreadyVerified, ...verifiedEntries, ...otherPending];
+
+        // Rule: Only Full House supported -> Confirming a winner always FINISHES the game
+        data.status = 'finished';
+        data.winners = newWinnersList;
+
+        return data;
+    });
+};
+
+export const rejectBingoWin = async (winner: any) => {
+    const gameRef = ref(realtimeDb, GAME_STATE_PATH);
+
+    return runTransaction(gameRef, (data: GameState | null) => {
+        if (!data || !data.winners) return;
+
+        const updatedWinners = data.winners.filter(w => !(w.userId === winner.userId && w.timestamp === winner.timestamp));
+        const hasMorePending = updatedWinners.some(w => !w.verified);
+
+        data.status = hasMorePending ? 'validating' : 'active';
+        data.winners = updatedWinners;
+
+        return data;
+    });
+};
+
 export const addWinner = async (userId: string, ticketId: string, prizePosition: number) => {
+    // Legacy support or internal use
     const snap = await get(ref(realtimeDb, GAME_STATE_PATH));
     const winners = snap.val()?.winners || [];
 
