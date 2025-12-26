@@ -150,38 +150,43 @@ export default function DrawControl() {
     };
 
     const handleConfirmWin = async (winner: NonNullable<GameState['winners']>[0]) => {
-        const confirmFinish = confirm(`¿Confirmar BINGO para este usuario?\n${winner.multiClaimCount ? 'RECLAMO MÚLTIPLE: ' + winner.multiClaimCount + ' Cartones' : '1 Cartón'}`);
-        if (!confirmFinish) return;
+        const confirmResult = confirm(`¿Confirmar BINGO para este usuario?\n${winner.multiClaimCount && winner.multiClaimCount > 1 ? 'RECLAMO MÚLTIPLE: ' + winner.multiClaimCount + ' Cartones' : '1 Cartón'}`);
+        if (!confirmResult) return;
 
-        // 1. Get all linked tickets in case of multi-claim
-        const linkedTickets = gameState?.winners?.filter(w => !w.verified && w.userId === winner.userId && w.timestamp === winner.timestamp) || [winner];
+        try {
+            // 1. Get all winners currently in the DB
+            const allWinners = gameState?.winners || [];
 
-        // 2. Get all winners that were ALREADY verified
-        const alreadyVerified = gameState?.winners?.filter(w => w.verified) || [];
+            // 2. Separate verified, the current group (linked), and OTHER pending
+            const alreadyVerified = allWinners.filter(w => w.verified);
+            const otherPending = allWinners.filter(w => !w.verified && !(w.userId === winner.userId && w.timestamp === winner.timestamp));
+            const linkedTickets = allWinners.filter(w => !w.verified && w.userId === winner.userId && w.timestamp === winner.timestamp);
 
-        // 3. These winners become the next official positions
-        const verifiedEntries = linkedTickets.map((t, idx) => ({
-            ...t,
-            verified: true,
-            prizePosition: alreadyVerified.length + 1 + idx,
-            payoutStatus: 'pending_info'
-        }));
+            // If for some reason linkedTickets is empty, use the provided winner
+            const ticketsToVerify = linkedTickets.length > 0 ? linkedTickets : [winner];
 
-        // 4. IMPORTANT: Clear the unverified queue (Only the currently confirmed user/group wins)
-        const newWinnersList = [...alreadyVerified, ...verifiedEntries];
+            // 3. Create the verified entries
+            const verifiedEntries = ticketsToVerify.map((t, idx) => ({
+                ...t,
+                verified: true,
+                prizePosition: alreadyVerified.length + 1 + idx,
+                payoutStatus: 'pending_info'
+            }));
 
-        const isFinal = confirm("¿Es este un premio FINAL (Cartón Lleno)?\nOK = Terminar Juego\nCancel = Seguir Jugando (Línea)");
+            // 4. Combine: Previously verified + New verified + Other pending (kept for reference or later)
+            // Note: Usually only 1 person wins the Full House, but we keep others just in case.
+            const newWinnersList = [...alreadyVerified, ...verifiedEntries, ...otherPending];
 
-        if (isFinal) {
+            // 5. Update Game State: Since we ONLY play Full House, confirming a winner ALWAYS finishes the game.
             await update(ref(realtimeDb, GAME_STATE_PATH), {
                 status: 'finished',
                 winners: newWinnersList
             });
-        } else {
-            await update(ref(realtimeDb, GAME_STATE_PATH), {
-                status: 'active',
-                winners: newWinnersList
-            });
+
+            playSound('victory'); // Optional: play sound on admin too
+        } catch (error) {
+            console.error("Error confirming win:", error);
+            alert("Error al confirmar el premio. Revisa la consola.");
         }
     };
 
