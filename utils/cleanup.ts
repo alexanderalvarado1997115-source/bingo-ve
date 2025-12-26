@@ -1,4 +1,4 @@
-import { db, realtimeDb } from "./lib/firebase/config";
+import { db, realtimeDb } from "../lib/firebase/config";
 import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
 import { ref, set } from "firebase/database";
 
