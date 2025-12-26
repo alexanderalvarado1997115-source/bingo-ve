@@ -151,26 +151,36 @@ export default function DrawControl() {
     };
 
     const handleConfirmWin = async (winner: NonNullable<GameState['winners']>[0]) => {
-        const isMulti = winner.multiClaimCount && winner.multiClaimCount > 1;
-        const confirmResult = window.confirm(`¿Confirmar BINGO para este usuario?\n${isMulti ? 'RECLAMO MÚLTIPLE: ' + winner.multiClaimCount + ' Cartones' : '1 Cartón'}`);
+        if (typeof window === 'undefined') return;
 
-        if (!confirmResult) return;
+        console.log(">>> Solicitud de confirmación iniciada para:", winner.ticketId);
+
+        const isMulti = winner.multiClaimCount && winner.multiClaimCount > 1;
+        const msg = `¿Confirmar BINGO para este usuario?\n${isMulti ? 'RECLAMO MÚLTIPLE: ' + winner.multiClaimCount + ' Cartones' : '1 Cartón'}`;
+
+        if (!window.confirm(msg)) {
+            console.log(">>> Confirmación cancelada por el usuario.");
+            return;
+        }
 
         setIsConfirming(true);
         try {
-            console.log("Validando ganador vía backend...");
+            console.log(">>> Llamando a verifyBingoWin...");
             const result = await verifyBingoWin(winner);
+            console.log(">>> Resultado del servidor:", result);
 
-            if (result.committed) {
-                console.log("Bingo confirmado correctamente.");
-                playSound('victory');
+            if (result && result.committed) {
+                console.log(">>> ¡ÉXITO! Bingo confirmado.");
+                if (typeof playSound === 'function') playSound('victory');
             } else {
-                throw new Error("La transacción de Firebase fue cancelada o falló.");
+                console.warn(">>> El servidor devolvió éxito pero committed es false.");
+                throw new Error("La base de datos no pudo procesar el cambio.");
             }
         } catch (error: any) {
-            console.error("Error confirmando premio:", error);
-            window.alert("⚠️ ERROR DE CONEXIÓN: No se pudo validar el premio.\n" + error.message);
+            console.error(">>> ERROR CRÍTICO EN handleConfirmWin:", error);
+            window.alert("⚠️ ERROR: No se pudo validar el premio.\nDetalle: " + (error.message || "Error desconocido"));
         } finally {
+            console.log(">>> Proceso finalizado, liberando botón.");
             setIsConfirming(false);
         }
     };

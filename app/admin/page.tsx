@@ -1,20 +1,24 @@
 "use client";
 import { useEffect, useState } from "react";
-import { getPendingPayments, approvePayment, rejectPayment } from "@/lib/firebase/admin-actions";
+import { getPendingPayments, approvePayment, rejectPayment, getAllUsers } from "@/lib/firebase/admin-actions";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useRouter } from "next/navigation";
-import { Check, X, RefreshCw, Users, CreditCard, LayoutDashboard, History, Settings, LogOut, Bell, ShieldCheck, Zap } from "lucide-react";
+import { Check, X, RefreshCw, Users, CreditCard, LayoutDashboard, History, Settings, LogOut, Bell, ShieldCheck, Zap, Search, Circle, User } from "lucide-react";
 import DrawControl from "@/components/admin/DrawControl";
 import { subscribeToPendingPayments } from "@/lib/firebase/payment-listener";
+import { subscribeToPresence } from "@/lib/firebase/presence";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function AdminDashboard() {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
     const [payments, setPayments] = useState<any[]>([]);
+    const [allUsers, setAllUsers] = useState<any[]>([]);
+    const [presenceMap, setPresenceMap] = useState<Record<string, any>>({});
+    const [searchQuery, setSearchQuery] = useState("");
     const [loading, setLoading] = useState(true);
     const [drawId, setDrawId] = useState<string>("ACTIVE_DRAW");
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'payments' | 'history'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'payments' | 'history' | 'users'>('dashboard');
 
     const ADMIN_EMAIL = "admin@bingove.suport.com";
 
@@ -30,9 +34,17 @@ export default function AdminDashboard() {
             setLoading(false);
         });
 
+        const unsubPresence = subscribeToPresence((statusMap) => {
+            setPresenceMap(statusMap);
+        });
+
+        // Initial fetch for users
+        getAllUsers().then(setAllUsers);
+
         return () => {
             unsubGame();
             unsubPayments();
+            unsubPresence();
         };
     }, []);
 
@@ -82,6 +94,14 @@ export default function AdminDashboard() {
                         label="Dashboard"
                     />
                     <SidebarLink
+                        active={activeTab === 'users'}
+                        onClick={() => setActiveTab('users')}
+                        icon={<Users size={20} />}
+                        label="Usuarios Registrados"
+                        badge={Object.values(presenceMap).filter(s => s.state === 'online').length || undefined}
+                        badgeColor="bg-green-500"
+                    />
+                    <SidebarLink
                         active={activeTab === 'payments'}
                         onClick={() => setActiveTab('payments')}
                         icon={<CreditCard size={20} />}
@@ -123,7 +143,7 @@ export default function AdminDashboard() {
                 <header className="h-20 bg-[#0f111a]/50 backdrop-blur-xl border-b border-white/5 px-8 flex items-center justify-between z-40">
                     <div className="flex items-center gap-4">
                         <h1 className="text-xl font-black text-white uppercase tracking-tighter">
-                            {activeTab === 'dashboard' ? 'Control de Sorteo' : activeTab === 'payments' ? 'Validación de Pagos' : 'Historial de Juegos'}
+                            {activeTab === 'dashboard' ? 'Control de Sorteo' : activeTab === 'payments' ? 'Validación de Pagos' : activeTab === 'users' ? 'Gestión de Usuarios' : 'Historial de Juegos'}
                         </h1>
                         <div className="h-4 w-px bg-white/10 mx-2" />
                         <div className="flex items-center gap-2">
@@ -281,6 +301,94 @@ export default function AdminDashboard() {
                                         </div>
                                     </div>
                                 </motion.div>
+                            ) : activeTab === 'users' ? (
+                                <motion.div
+                                    key="users"
+                                    initial={{ opacity: 0, scale: 0.98 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    className="bg-[#0f111a] rounded-[2.5rem] border border-white/5 overflow-hidden shadow-2xl"
+                                >
+                                    <div className="p-8 border-b border-white/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                        <div>
+                                            <h3 className="text-xl font-black text-white uppercase tracking-tighter">Directorio de Jugadores</h3>
+                                            <p className="text-xs text-slate-500 mt-1">Monitorea quién está conectado y participa en tiempo real.</p>
+                                        </div>
+                                        <div className="relative w-full md:w-80">
+                                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+                                            <input
+                                                type="text"
+                                                placeholder="Buscar por nombre o correo..."
+                                                value={searchQuery}
+                                                onChange={(e) => setSearchQuery(e.target.value)}
+                                                className="w-full bg-[#161822] border border-white/5 rounded-2xl py-3 pl-12 pr-4 text-xs font-bold text-white outline-none focus:border-indigo-500/50 transition-all"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left">
+                                            <thead className="bg-[#161822] text-slate-500 text-[10px] font-black uppercase tracking-[0.2em]">
+                                                <tr>
+                                                    <th className="px-8 py-5">Jugador</th>
+                                                    <th className="px-8 py-5">Estado</th>
+                                                    <th className="px-8 py-5">Correo</th>
+                                                    <th className="px-8 py-5">Registrado</th>
+                                                    <th className="px-8 py-5 text-right">Acciones</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-white/5">
+                                                {allUsers
+                                                    .filter(u => u.displayName?.toLowerCase().includes(searchQuery.toLowerCase()) || u.email?.toLowerCase().includes(searchQuery.toLowerCase()))
+                                                    .map((u) => {
+                                                        const status = presenceMap[u.uid]?.state || 'offline';
+                                                        const isOnline = status === 'online';
+                                                        return (
+                                                            <tr key={u.uid} className="hover:bg-white/[0.02] transition-colors group">
+                                                                <td className="px-8 py-6">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black shadow-lg ${isOnline ? 'bg-green-500/10 text-green-500' : 'bg-slate-800 text-slate-500'}`}>
+                                                                            <User size={18} />
+                                                                        </div>
+                                                                        <div>
+                                                                            <div className="text-sm font-black text-white">{u.displayName || 'Sin Nombre'}</div>
+                                                                            <div className="text-[10px] text-slate-500 font-bold uppercase overflow-hidden w-24 text-ellipsis">ID: {u.uid.slice(0, 8)}</div>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-8 py-6">
+                                                                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${isOnline ? 'bg-green-500/10 text-green-500' : 'bg-slate-800 text-slate-500'}`}>
+                                                                        <Circle size={8} fill="currentColor" className={isOnline ? 'animate-pulse' : ''} />
+                                                                        {isOnline ? 'En Línea' : 'Desconectado'}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-8 py-6">
+                                                                    <div className="text-xs font-bold text-slate-300">{u.email}</div>
+                                                                </td>
+                                                                <td className="px-8 py-6">
+                                                                    <div className="text-xs font-bold text-slate-500">
+                                                                        {u.createdAt ? new Date(u.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-8 py-6 text-right">
+                                                                    <button className="p-2 text-slate-500 hover:text-white transition-colors">
+                                                                        <Settings size={16} />
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                            </tbody>
+                                        </table>
+                                        {allUsers.length === 0 && (
+                                            <div className="p-20 text-center space-y-4">
+                                                <div className="w-16 h-16 bg-slate-900 rounded-3xl flex items-center justify-center mx-auto text-slate-700">
+                                                    <Users size={32} />
+                                                </div>
+                                                <p className="text-slate-500 font-medium">Aún no hay usuarios registrados.</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </motion.div>
                             ) : (
                                 <div className="p-20 text-center text-slate-500 bg-[#0f111a] rounded-[2.5rem] border border-white/5">
                                     Esta sección estará disponible próximamente.
@@ -294,7 +402,7 @@ export default function AdminDashboard() {
     );
 }
 
-function SidebarLink({ active, onClick, icon, label, badge }: { active: boolean, onClick: () => void, icon: any, label: string, badge?: number }) {
+function SidebarLink({ active, onClick, icon, label, badge, badgeColor = "bg-red-500" }: { active: boolean, onClick: () => void, icon: any, label: string, badge?: number, badgeColor?: string }) {
     return (
         <button
             onClick={onClick}
@@ -310,7 +418,7 @@ function SidebarLink({ active, onClick, icon, label, badge }: { active: boolean,
                 </span>
             </div>
             {badge && (
-                <div className={`px-2 py-0.5 rounded-lg text-[10px] font-black ${active ? 'bg-white text-indigo-600' : 'bg-red-500 text-white'}`}>
+                <div className={`px-2 py-0.5 rounded-lg text-[10px] font-black ${active ? 'bg-white text-indigo-600' : badgeColor + ' text-white'}`}>
                     {badge}
                 </div>
             )}

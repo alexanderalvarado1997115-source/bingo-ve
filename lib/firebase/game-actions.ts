@@ -178,12 +178,18 @@ export const drawNextBall = async () => {
 };
 
 export const verifyBingoWin = async (winner: any) => {
+    console.log("SERVER: Iniciando verifyBingoWin para ticket:", winner.ticketId);
     const gameRef = ref(realtimeDb, GAME_STATE_PATH);
     const snap = await get(gameRef);
-    if (!snap.exists()) throw new Error("No hay juego activo.");
+
+    if (!snap.exists()) {
+        console.error("SERVER: El nodo de juego no existe.");
+        throw new Error("No hay juego activo.");
+    }
 
     const data = snap.val() as GameState;
     const allWinners = data.winners || [];
+    console.log("SERVER: Total ganadores en BD:", allWinners.length);
 
     const alreadyVerified = allWinners.filter(w => w.verified);
     const otherPending = allWinners.filter(w => !w.verified && w.ticketId !== winner.ticketId);
@@ -194,21 +200,33 @@ export const verifyBingoWin = async (winner: any) => {
         w.ticketId === winner.ticketId
     ));
 
-    if (ticketsToVerify.length === 0) throw new Error("No se encontró el cartón a validar.");
+    console.log("SERVER: Cartones encontrados para verificar:", ticketsToVerify.length);
+
+    if (ticketsToVerify.length === 0) {
+        console.error("SERVER: No se encontró ningún cartón pendiente que coincida.");
+        throw new Error("No se encontró el cartón a validar en la lista de pendientes.");
+    }
 
     const verifiedEntries = ticketsToVerify.map((t, idx) => ({
         ...t,
         verified: true,
         prizePosition: alreadyVerified.length + 1 + idx,
-        payoutStatus: 'pending_info'
+        payoutStatus: 'pending_info' as const
     }));
 
     const newWinnersList = [...alreadyVerified, ...verifiedEntries, ...otherPending];
+    console.log("SERVER: Nueva lista de ganadores generada. Enviando actualización...");
 
-    await update(gameRef, {
-        status: 'finished',
-        winners: newWinnersList
-    });
+    try {
+        await update(gameRef, {
+            status: 'finished',
+            winners: newWinnersList
+        });
+        console.log("SERVER: Actualización en Firebase exitosa.");
+    } catch (firebaseErr: any) {
+        console.error("SERVER: Error al actualizar Firebase:", firebaseErr);
+        throw new Error("Fallo al escribir en la base de datos: " + firebaseErr.message);
+    }
 
     return { committed: true };
 };

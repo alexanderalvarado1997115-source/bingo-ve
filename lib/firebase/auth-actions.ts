@@ -1,9 +1,10 @@
-import { auth } from "./config";
+import { auth, db } from "./config";
 import {
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
     UserCredential
 } from "firebase/auth";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 /**
  * Register a new user with email and password
@@ -14,6 +15,16 @@ export const registerWithEmail = async (
 ): Promise<{ success: boolean; user?: UserCredential; error?: string }> => {
     try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+
+        // Save user to Firestore
+        await setDoc(doc(db, "users", userCredential.user.uid), {
+            uid: userCredential.user.uid,
+            email: userCredential.user.email,
+            displayName: email.split('@')[0], // Fallback name
+            createdAt: serverTimestamp(),
+            role: 'user'
+        });
+
         return { success: true, user: userCredential };
     } catch (error: any) {
         let errorMessage = "Error al crear la cuenta";
