@@ -24,6 +24,7 @@ export default function DrawControl() {
     const [isResetting, setIsResetting] = useState(false);
     const [resetStep, setResetStep] = useState(0); // 0: Normal, 1: Confirm, 2: Resetting
     const [isArchiving, setIsArchiving] = useState(false);
+    const [isConfirming, setIsConfirming] = useState(false);
     const [totalTickets, setTotalTickets] = useState(0);
     const [totalRevenue, setTotalRevenue] = useState(0);
     const { playSound, isMuted, toggleMute } = useAudio();
@@ -150,10 +151,15 @@ export default function DrawControl() {
     };
 
     const handleConfirmWin = async (winner: NonNullable<GameState['winners']>[0]) => {
-        const confirmResult = confirm(`¿Confirmar BINGO para este usuario?\n${winner.multiClaimCount && winner.multiClaimCount > 1 ? 'RECLAMO MÚLTIPLE: ' + winner.multiClaimCount + ' Cartones' : '1 Cartón'}`);
+        const isMulti = winner.multiClaimCount && winner.multiClaimCount > 1;
+        const confirmResult = confirm(`¿Confirmar BINGO para este usuario?\n${isMulti ? 'RECLAMO MÚLTIPLE: ' + winner.multiClaimCount + ' Cartones' : '1 Cartón'}`);
+
         if (!confirmResult) return;
 
+        setIsConfirming(true);
         try {
+            console.log("Iniciando confirmación de premio...", winner.userId);
+
             // 1. Get all winners currently in the DB
             const allWinners = gameState?.winners || [];
 
@@ -162,7 +168,6 @@ export default function DrawControl() {
             const otherPending = allWinners.filter(w => !w.verified && !(w.userId === winner.userId && w.timestamp === winner.timestamp));
             const linkedTickets = allWinners.filter(w => !w.verified && w.userId === winner.userId && w.timestamp === winner.timestamp);
 
-            // If for some reason linkedTickets is empty, use the provided winner
             const ticketsToVerify = linkedTickets.length > 0 ? linkedTickets : [winner];
 
             // 3. Create the verified entries
@@ -173,8 +178,7 @@ export default function DrawControl() {
                 payoutStatus: 'pending_info'
             }));
 
-            // 4. Combine: Previously verified + New verified + Other pending (kept for reference or later)
-            // Note: Usually only 1 person wins the Full House, but we keep others just in case.
+            // 4. Combine: Previously verified + New verified + Other pending
             const newWinnersList = [...alreadyVerified, ...verifiedEntries, ...otherPending];
 
             // 5. Update Game State: Since we ONLY play Full House, confirming a winner ALWAYS finishes the game.
@@ -183,10 +187,13 @@ export default function DrawControl() {
                 winners: newWinnersList
             });
 
-            playSound('victory'); // Optional: play sound on admin too
-        } catch (error) {
-            console.error("Error confirming win:", error);
-            alert("Error al confirmar el premio. Revisa la consola.");
+            console.log("Premio confirmado exitosamente.");
+            playSound('victory');
+        } catch (error: any) {
+            console.error("Error confirmando premio:", error);
+            alert("⚠️ ERROR CRÍTICO: No se pudo conectar con la base de datos. Revisa tu internet o los permisos de Firebase.\nDetalle: " + error.message);
+        } finally {
+            setIsConfirming(false);
         }
     };
 
@@ -304,9 +311,10 @@ export default function DrawControl() {
                                 </button>
                                 <button
                                     onClick={() => handleConfirmWin(claim)}
-                                    className="flex-1 bg-orange-500 hover:bg-orange-400 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] shadow-xl shadow-orange-500/20 active:scale-95 transition-all"
+                                    disabled={isConfirming}
+                                    className={`flex-1 ${isConfirming ? 'bg-slate-700' : 'bg-orange-500 hover:bg-orange-400'} text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] shadow-xl shadow-orange-500/20 active:scale-95 transition-all`}
                                 >
-                                    ¡VÁLIDO! (PAGAR {claim.multiClaimCount ? claim.multiClaimCount * 500 : 500} Bs)
+                                    {isConfirming ? 'PROCESANDO...' : `¡VÁLIDO! (PAGAR ${claim.multiClaimCount ? claim.multiClaimCount * 500 : 500} Bs)`}
                                 </button>
                             </div>
                         </div>
