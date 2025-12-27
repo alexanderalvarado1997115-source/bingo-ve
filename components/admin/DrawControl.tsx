@@ -1,8 +1,8 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { ref, update } from "firebase/database";
+import { ref, update, onValue } from "firebase/database";
 import { realtimeDb } from "@/lib/firebase/config";
-import { startCountdown, finishCountdown, pauseGame, drawNextBall, subscribeToGame, GameState, initializeGame, addWinner, updateGameMode, updateGameConfig, subscribeToOnlineCount, subscribeToConnection, fullResetSystem, archiveCurrentGame, markWinnerAsPaid, verifyBingoWin, rejectBingoWin } from "@/lib/firebase/game-actions";
+import { startCountdown, finishCountdown, pauseGame, drawNextBall, subscribeToGame, GameState, initializeGame, addWinner, updateGameMode, updateGameConfig, subscribeToOnlineCount, subscribeToConnection, fullResetSystem, archiveCurrentGame, markWinnerAsPaid, verifyBingoWin, rejectBingoWin, resetWeeklyHoya } from "@/lib/firebase/game-actions";
 import { Play, Pause, FastForward, Timer, Settings, Users, MousePointer2, Zap, Save, X, Plus, Minus, SkipForward, Archive, Copy, CheckCircle, CreditCard, Smartphone, User, Volume2, VolumeX, AlertTriangle, Trophy, BarChart3, Clock, Ticket, CheckCircle2 } from "lucide-react";
 import { getAllActiveTickets } from "@/lib/firebase/admin-actions";
 import { checkWinner, getWinningDetails } from "@/utils/game-logic";
@@ -25,8 +25,11 @@ export default function DrawControl() {
     const [resetStep, setResetStep] = useState(0); // 0: Normal, 1: Confirm, 2: Resetting
     const [isArchiving, setIsArchiving] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
+    const [isResettingHoya, setIsResettingHoya] = useState(false);
+    const [hoyaStep, setHoyaStep] = useState(0); // 0: Normal, 1: Confirm, 2: Done
     const [totalTickets, setTotalTickets] = useState(0);
     const [totalRevenue, setTotalRevenue] = useState(0);
+    const [financials, setFinancials] = useState({ totalRevenue: 0, hoya: 0 });
     const { playSound, isMuted, toggleMute } = useAudio();
     const lastNumberRef = useRef<number | null>(null);
 
@@ -39,10 +42,17 @@ export default function DrawControl() {
         const unsubOnline = subscribeToOnlineCount((count) => {
             setOnlineCount(count);
         });
+        const unsubFin = onValue(ref(realtimeDb, "financials"), (snapshot) => {
+            if (snapshot.exists()) {
+                setFinancials(snapshot.val());
+            }
+        });
+
         return () => {
             unsubConn();
             unsubGame();
             unsubOnline();
+            unsubFin();
         };
     }, []);
 
@@ -118,16 +128,32 @@ export default function DrawControl() {
     const handleInit = () => initializeGame(`SORTEO_${Date.now()}`);
 
     const handleFullReset = async () => {
+        setIsResetting(true);
         setResetStep(2);
         const res = await fullResetSystem();
         if (res.success) {
-            setResetStep(0);
-            alert("Sistema reseteado correctamente.");
+            setResetStep(3); // Finished
+            setTimeout(() => setResetStep(0), 3000);
         } else {
             setResetStep(0);
-            alert("Error al resetear el sistema.");
+            alert("Error al resetear.");
         }
+        setIsResetting(false);
     };
+
+    const handleHoyaReset = async () => {
+        setIsResettingHoya(true);
+        setHoyaStep(2);
+        const res = await resetWeeklyHoya();
+        if (res.success) {
+            setHoyaStep(3); // Finished
+            setTimeout(() => setHoyaStep(0), 3000);
+        } else {
+            setHoyaStep(0);
+            alert("Error al resetear la hoya.");
+        }
+        setIsResettingHoya(false);
+    }
 
     const handleArchive = async () => {
         if (!confirm("¿Seguro que deseas cerrar este juego y archivar todo? Los tickets actuales desaparecerán.")) return;
@@ -434,8 +460,42 @@ export default function DrawControl() {
                 <div className="grid grid-cols-2 gap-4">
                     <StatBox icon={<Users size={14} />} label="Online" value={onlineCount} color="green" />
                     <StatBox icon={<Ticket size={14} />} label="Ventas" value={`${gameState.config.totalTickets} / ${gameState.config.maxTickets}`} color="indigo" />
-                    <StatBox icon={<BarChart3 size={14} />} label="Capital" value={`${totalRevenue} Bs`} color="blue" />
-                    <StatBox icon={<Trophy size={14} />} label="Premios" value={`${gameState.config.prizes.reduce((a, b) => a + b, 0)} Bs`} color="orange" />
+
+                    {/* Monitor Financiero - "La Hoya" */}
+                    <div className="col-span-2 grid grid-cols-3 gap-3 pt-2">
+                        <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-4">
+                            <div className="flex items-center gap-2 mb-1">
+                                <div className="p-1.5 bg-indigo-500/20 rounded-lg text-indigo-400">
+                                    <Zap size={10} />
+                                </div>
+                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">La Hoya (20%)</span>
+                            </div>
+                            <div className="text-sm font-black text-indigo-100">{financials.hoya.toFixed(2)} Bs</div>
+                        </div>
+
+                        <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4">
+                            <div className="flex items-center gap-2 mb-1">
+                                <div className="p-1.5 bg-blue-500/20 rounded-lg text-blue-400">
+                                    <BarChart3 size={10} />
+                                </div>
+                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Caja Total</span>
+                            </div>
+                            <div className="text-sm font-black text-blue-100">{financials.totalRevenue.toFixed(2)} Bs</div>
+                        </div>
+
+                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4">
+                            <div className="flex items-center gap-2 mb-1">
+                                <div className="p-1.5 bg-emerald-500/20 rounded-lg text-emerald-400">
+                                    <Trophy size={10} />
+                                </div>
+                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Utilidad Estimada</span>
+                            </div>
+                            <div className="text-sm font-black text-emerald-100">
+                                {/* Cálculo: Total - Hoya - 500 (Premio Fijo) */}
+                                {Math.max(0, financials.totalRevenue - financials.hoya - 500).toFixed(2)} Bs
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -531,8 +591,8 @@ export default function DrawControl() {
                                     <div className="flex justify-between items-center">
                                         <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Barómetro</span>
                                         <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase text-white ${gameState.socialStatus?.tensionLevel === 'imminent' ? 'bg-red-500 animate-pulse shadow-lg shadow-red-500/30' :
-                                                gameState.socialStatus?.tensionLevel === 'high' ? 'bg-orange-500' :
-                                                    gameState.socialStatus?.tensionLevel === 'medium' ? 'bg-blue-500' : 'bg-slate-800'
+                                            gameState.socialStatus?.tensionLevel === 'high' ? 'bg-orange-500' :
+                                                gameState.socialStatus?.tensionLevel === 'medium' ? 'bg-blue-500' : 'bg-slate-800'
                                             }`}>
                                             {gameState.socialStatus?.tensionLevel || 'Bajo'}
                                         </span>
@@ -590,23 +650,45 @@ export default function DrawControl() {
             </div>
 
             {/* Danger Section */}
-            <div className="p-8 border-t border-white/5 bg-[#161822]/30 mt-auto">
-                <div className="flex items-center gap-2 mb-4">
+            <div className="p-8 border-t border-white/5 bg-[#161822]/30 mt-auto space-y-4">
+                <div className="flex items-center gap-2">
                     <AlertTriangle size={14} className="text-red-500" />
                     <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">Zona de Peligro</span>
                 </div>
-                {resetStep === 0 ? (
-                    <button onClick={() => setResetStep(1)} className="w-full py-3 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:text-red-500 hover:bg-red-500/5 transition-all">
-                        REINICIAR SISTEMA COMPLETO
-                    </button>
-                ) : resetStep === 1 ? (
-                    <div className="flex gap-2">
-                        <button onClick={() => setResetStep(0)} className="flex-1 py-3 bg-slate-800 rounded-xl text-[10px] font-black uppercase text-white tracking-widest">CANCELAR</button>
-                        <button onClick={handleFullReset} className="flex-1 py-3 bg-red-600 rounded-xl text-[10px] font-black uppercase text-white tracking-widest shadow-lg shadow-red-600/20">CONFIRMAR BORRADO</button>
-                    </div>
-                ) : (
-                    <div className="w-full py-3 bg-slate-900 text-slate-500 text-[10px] font-black text-center animate-pulse tracking-widest">RESETEANDO...</div>
-                )}
+
+                <div className="flex flex-col gap-2">
+                    {/* Hoya Reset Button */}
+                    {hoyaStep === 0 ? (
+                        <button onClick={() => setHoyaStep(1)} className="w-full py-3 rounded-xl text-[10px] font-black uppercase tracking-widest text-orange-400 bg-orange-500/5 border border-orange-500/10 hover:bg-orange-500/10 transition-all">
+                            Cerrar Semana (Reset Hoya)
+                        </button>
+                    ) : hoyaStep === 1 ? (
+                        <div className="flex gap-2">
+                            <button onClick={() => setHoyaStep(0)} className="flex-1 py-3 bg-slate-800 rounded-xl text-[10px] font-black uppercase text-white tracking-widest">NO</button>
+                            <button onClick={handleHoyaReset} className="flex-1 py-3 bg-orange-600 rounded-xl text-[10px] font-black uppercase text-white tracking-widest">¿CIERRE SEMANAL?</button>
+                        </div>
+                    ) : hoyaStep === 2 ? (
+                        <div className="w-full py-1.5 bg-slate-900 text-orange-500 text-[10px] font-black text-center animate-pulse tracking-widest rounded-xl">RESUMIENDO HOYA...</div>
+                    ) : (
+                        <div className="w-full py-1.5 bg-green-500 text-white text-[10px] font-black text-center tracking-widest rounded-xl">✅ ¡HOYA ARCHIVADA!</div>
+                    )}
+
+                    {/* Full Reset Button */}
+                    {resetStep === 0 ? (
+                        <button onClick={() => setResetStep(1)} className="w-full py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-600 hover:text-red-500 transition-all">
+                            Reiniciar Sistema Completo
+                        </button>
+                    ) : resetStep === 1 ? (
+                        <div className="flex gap-2">
+                            <button onClick={() => setResetStep(0)} className="flex-1 py-3 bg-slate-800 rounded-xl text-[10px] font-black uppercase text-white tracking-widest">ATRÁS</button>
+                            <button onClick={handleFullReset} className="flex-1 py-3 bg-red-600 rounded-xl text-[10px] font-black uppercase text-white tracking-widest">RESET TOTAL</button>
+                        </div>
+                    ) : resetStep === 2 ? (
+                        <div className="w-full py-3 bg-slate-900 text-slate-500 text-[10px] font-black text-center animate-pulse tracking-widest">LIMPIANDO...</div>
+                    ) : (
+                        <div className="w-full py-3 bg-green-500 text-white text-[10px] font-black text-center tracking-widest">✅ SISTEMA LIMPIO</div>
+                    )}
+                </div>
             </div>
         </div>
     );

@@ -21,40 +21,40 @@ export const getPendingPayments = async () => {
 export const approvePayment = async (paymentId: string, userId: string, ticketsCount: number, drawId: string) => {
     try {
         const { realtimeDb } = await import("./config");
-        const { ref, get, update } = await import("firebase/database");
+        const { ref, runTransaction } = await import("firebase/database");
+
+        // 1. Get Payment Data first to ensure we have the amount
+        const paymentSnapshot = await getDocs(query(collection(db, "payments"), where("__name__", "==", paymentId)));
+        if (paymentSnapshot.empty) throw new Error("Pago no encontrado");
+
+        const paymentData = paymentSnapshot.docs[0].data();
+        const amount = paymentData.amount || 0;
+        const userName = paymentData.userName || "Jugador";
 
         const batch = writeBatch(db);
 
-        // 0. Get User display name for the tickets (helps the referee bot)
-        const userSnap = await getDocs(query(collection(db, "users"), where("uid", "==", userId)));
-        const userData = userSnap.docs[0]?.data();
-        const userName = userData?.displayName || userData?.email?.split('@')[0] || "Jugador";
-
-        // 1. Reference to payment
+        // 2. Mark Payment as Approved
         const paymentRef = doc(db, "payments", paymentId);
         batch.update(paymentRef, {
             status: "approved",
             reviewedAt: serverTimestamp(),
         });
 
-        // 2. Generate and Add Tickets within the batch
+        // 3. Create Tickets
         const ticketsCollectionRef = collection(db, "tickets");
-
         for (let i = 0; i < ticketsCount; i++) {
             const ticketRef = doc(ticketsCollectionRef);
             const matrix = generateBingoCard75();
-
             const rowMajor = [];
             for (let r = 0; r < 5; r++) {
                 for (let c = 0; c < 5; c++) {
                     rowMajor.push(matrix[c][r]);
                 }
             }
-
             batch.set(ticketRef, {
                 userId,
-                userName, // Saved for Social/Bot analysis
-                drawId: drawId,
+                userName,
+                drawId,
                 matrix: rowMajor,
                 numbers: rowMajor.filter(n => n !== 0),
                 markedNumbers: [],
@@ -62,30 +62,40 @@ export const approvePayment = async (paymentId: string, userId: string, ticketsC
             });
         }
 
-        await batch.commit();
+        // --- ATOMIC TRANSACTION FOR FINANCES AND TICKETS ---
+        const gameActiveRef = ref(realtimeDb, "game/active");
+        const financialsRef = ref(realtimeDb, "financials");
 
-        // 3. Update Realtime Database Total Counter & Check Auto-Start
-        const gameRef = ref(realtimeDb, "game/active");
-        const gameSnap = await get(gameRef);
-        if (gameSnap.exists()) {
-            const gameState = gameSnap.val();
-            const config = gameState.config || {};
-            const newTotal = (config.totalTickets || 0) + ticketsCount;
-            const maxGoal = config.maxTickets || 90;
+        // Use a transaction for financials
+        await runTransaction(financialsRef, (current) => {
+            const data = current || { totalRevenue: 0, hoya: 0 };
+            return {
+                ...data,
+                totalRevenue: (data.totalRevenue || 0) + amount,
+                hoya: (data.hoya || 0) + (amount * 0.20)
+            };
+        });
 
-            await update(ref(realtimeDb, "game/active/config"), {
-                totalTickets: newTotal
-            });
+        // Use a transaction for game config to avoid "pitting" ticket counts
+        await runTransaction(ref(realtimeDb, "game/active/config"), (config) => {
+            if (!config) return config;
+            return {
+                ...config,
+                totalTickets: (config.totalTickets || 0) + ticketsCount
+            };
+        });
 
-            // "Swiss Watch" Logic: If target is met, START!
-            if (newTotal >= maxGoal && gameState.status === 'waiting') {
-                await update(gameRef, {
-                    status: 'countdown',
-                    countdownStartTime: Date.now()
-                });
-            }
+        // Check for Auto-Start (Swiss Watch)
+        const gameSnap = await import("firebase/database").then(m => m.get(gameActiveRef));
+        const gameState = gameSnap.val();
+        if (gameState.status === 'waiting' && gameState.config.totalTickets >= gameState.config.maxTickets) {
+            await import("firebase/database").then(m => m.update(gameActiveRef, {
+                status: 'countdown',
+                countdownStartTime: Date.now()
+            }));
         }
 
+        await batch.commit();
         return { success: true };
     } catch (error) {
         console.error("Error approving payment:", error);

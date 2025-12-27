@@ -1,6 +1,6 @@
 import { realtimeDb, db } from "./config";
 import { ref, set, get, update, onValue, onDisconnect, serverTimestamp, runTransaction } from "firebase/database";
-import { collection, getDocs, deleteDoc, doc, writeBatch, serverTimestamp as firestoreTimestamp } from "firebase/firestore";
+import { collection, getDocs, deleteDoc, doc, writeBatch, addDoc, serverTimestamp as firestoreTimestamp } from "firebase/firestore";
 
 const GAME_STATE_PATH = "game/active";
 const PRESENCE_PATH = "presence/users";
@@ -344,18 +344,27 @@ export const subscribeToGame = (callback: (state: GameState | null) => void, onE
 
 export const fullResetSystem = async () => {
     try {
-        // 1. Clear Firestore: Tickets and Payments
-        const collectionsToClear = ["tickets", "payments"];
-        for (const colName of collectionsToClear) {
-            const snap = await getDocs(collection(db, colName));
-            console.log(`Borrando ${snap.size} de ${colName}`);
+        console.log("INICIANDO RESETEO SEGURO...");
 
-            // Delete docs individually or in chunks to avoid batch limits (500)
-            const deletePromises = snap.docs.map(d => deleteDoc(d.ref));
-            await Promise.all(deletePromises);
+        // 1. ARCHIVAR ANTES DE BORRAR (Copia de seguridad en history_backups)
+        const collectionsToBackup = ["tickets", "payments"];
+        const backupId = `BACKUP_${Date.now()}`;
+
+        for (const colName of collectionsToBackup) {
+            const snap = await getDocs(collection(db, colName));
+            if (snap.size > 0) {
+                const batch = writeBatch(db);
+                snap.docs.forEach(docSnap => {
+                    const backupRef = doc(db, "history_backups", backupId, colName, docSnap.id);
+                    batch.set(backupRef, { ...docSnap.data(), backedUpAt: firestoreTimestamp() });
+                    batch.delete(docSnap.ref);
+                });
+                await batch.commit();
+                console.log(`✅ Backup y limpieza de ${colName} completada.`);
+            }
         }
 
-        // 2. Clear RTDB: Game State and Presence
+        // 2. Limpiar RTDB: Game State y Presence
         await set(ref(realtimeDb, GAME_STATE_PATH), {
             status: 'waiting',
             mode: 'auto',
@@ -396,6 +405,39 @@ export const fullResetSystem = async () => {
         return { success: false, error };
     }
 };
+
+/**
+ * RESET SEMANAL DE LA HOYA (Días Viernes)
+ * Archiva el acumulado y pone el contador en 0.
+ */
+export const resetWeeklyHoya = async () => {
+    try {
+        const financialsRef = ref(realtimeDb, "financials");
+        const snap = await get(financialsRef);
+
+        if (!snap.exists()) return { success: false, error: "No hay finanzas registradas" };
+
+        const currentData = snap.val();
+        const hoyaAmount = currentData.hoya || 0;
+
+        // 1. Guardar en Historial de Firestore
+        await addDoc(collection(db, "hoya_history"), {
+            amount: hoyaAmount,
+            closedAt: firestoreTimestamp(),
+            totalRevenueAtClose: currentData.totalRevenue || 0
+        });
+
+        // 2. Resetear en Realtime Database (Mantenemos totalRevenue)
+        await update(financialsRef, {
+            hoya: 0
+        });
+
+        return { success: true, amountResetted: hoyaAmount };
+    } catch (error) {
+        console.error("Error al resetear la hoya:", error);
+        return { success: false, error };
+    }
+}
 
 // --- Archive and Reset Logic ---
 export const archiveCurrentGame = async () => {
