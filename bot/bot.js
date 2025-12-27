@@ -161,11 +161,11 @@ https://bingo-ve-delta.vercel.app/
         ],
         premios: [
             // Calle / Informal
-            "cuanto gano", "que premios hay", "premio", "cuanto pagan", "premios de hoy", "dinero", "ganancia", "cuanto hay", "morocho", "cuanto es el premio", "el pote", "cuanto es el acumulado", "que dan", "premios reales",
+            "cuanto gano", "que premios hay", "premio", "cuanto pagan", "premios de hoy", "dinero", "ganancia", "cuanto hay", "morocho", "cuanto es el premio", "el pote", "cuanto es el acumulado", "que dan", "premios reales", "la hoya", "pote", "acumulado", "bote", "plata del viernes",
             // Educado / Formal
-            "monto del premio", "premios se entregarán", "tabla de premios", "incentivos de hoy", "premio mayor",
+            "monto del premio", "premios se entregarán", "tabla de premios", "incentivos de hoy", "premio mayor", "premio acumulado semanal",
             // Super Educado
-            "solicito información sobre la bolsa de premios acumulada", "quisiera conocer la escala de compensación para los ganadores", "detalles de la premiación", "incentivos económicos", "compensación oficial"
+            "solicito información sobre la bolsa de premios acumulada", "quisiera conocer la escala de compensación para los ganadores", "detalles de la premiación", "incentivos económicos", "compensación oficial", "estado de la hoya semanal"
         ]
     };
 
@@ -176,7 +176,7 @@ https://bingo-ve-delta.vercel.app/
     } else if (keywords.instrucciones.some(k => text.includes(k))) {
         broadcast("📖 *Tutorial Rápido:* ¿Deseas aprender a jugar? Escribe *!jugar* para explicarte cómo funciona nuestra tecnología automática.");
     } else if (keywords.premios.some(k => text.includes(k))) {
-        broadcast("🏆 *Premios:* Los premios varían cada día según la cantidad de cartones. Escribe *!status* para ver el acumulado de hoy.");
+        broadcast(`🏆 *Premios:* Los premios del sorteo actual y la Hoya Semanal (${currentHoyaAmount.toFixed(2)} Bs) están en la web. Escribe *!status* para un resumen rápido.`);
     }
 });
 

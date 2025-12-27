@@ -23,13 +23,24 @@ export const approvePayment = async (paymentId: string, userId: string, ticketsC
         const { realtimeDb } = await import("./config");
         const { ref, runTransaction } = await import("firebase/database");
 
-        // 1. Get Payment Data first to ensure we have the amount
+        // 1. Get User Data for accurate records
+        let userName = "Jugador";
+        try {
+            const userSnapshot = await getDocs(query(collection(db, "users"), where("uid", "==", userId)));
+            if (!userSnapshot.empty) {
+                const userData = userSnapshot.docs[0].data();
+                userName = userData.displayName || userData.email?.split('@')[0] || "Jugador";
+            }
+        } catch (e) {
+            console.error("Error fetching user name:", e);
+        }
+
+        // 2. Get Payment Data
         const paymentSnapshot = await getDocs(query(collection(db, "payments"), where("__name__", "==", paymentId)));
         if (paymentSnapshot.empty) throw new Error("Pago no encontrado");
 
         const paymentData = paymentSnapshot.docs[0].data();
-        const amount = paymentData.amount || 0;
-        const userName = paymentData.userName || "Jugador";
+        const amount = Number(paymentData.amount) || 0; // FORCE NUMBER BLINDAGE
 
         const batch = writeBatch(db);
 
@@ -71,8 +82,8 @@ export const approvePayment = async (paymentId: string, userId: string, ticketsC
             const data = current || { totalRevenue: 0, hoya: 0 };
             return {
                 ...data,
-                totalRevenue: (data.totalRevenue || 0) + amount,
-                hoya: (data.hoya || 0) + (amount * 0.20)
+                totalRevenue: Number(data.totalRevenue || 0) + amount,
+                hoya: Number(data.hoya || 0) + (amount * 0.20)
             };
         });
 
@@ -81,7 +92,7 @@ export const approvePayment = async (paymentId: string, userId: string, ticketsC
             if (!config) return config;
             return {
                 ...config,
-                totalTickets: (config.totalTickets || 0) + ticketsCount
+                totalTickets: (Number(config.totalTickets) || 0) + ticketsCount
             };
         });
 

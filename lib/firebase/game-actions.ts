@@ -396,7 +396,14 @@ export const fullResetSystem = async () => {
             }
         });
 
-        // 3. Clear Presence nodes
+        // 3. Clear Financials (Caja Limpia)
+        await set(ref(realtimeDb, "financials"), {
+            totalRevenue: 0,
+            hoya: 0,
+            lastReset: Date.now()
+        });
+
+        // 4. Clear Presence nodes
         await set(ref(realtimeDb, PRESENCE_PATH), null);
 
         return { success: true };
