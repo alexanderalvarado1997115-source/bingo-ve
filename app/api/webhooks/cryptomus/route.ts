@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cryptomus } from '@/lib/cryptomus';
-import { adminAuth } from '@/lib/firebase/admin-config'; // Asumimos que existe o usaremos Firestore directo si es cliente
+// import { adminAuth } from '@/lib/firebase/admin-config'; // Removed unused import causing build error
 import { recordTransactionSafe, processReferralReward } from '@/lib/firebase/financial-actions';
 import { db } from '@/lib/firebase/config';
 import { doc, getDoc, updateDoc, collection, addDoc, serverTimestamp, getDocs, query, where } from 'firebase/firestore';
