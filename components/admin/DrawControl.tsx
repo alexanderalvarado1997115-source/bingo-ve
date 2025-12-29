@@ -197,7 +197,7 @@ export default function DrawControl() {
 
             if (result && result.committed) {
                 console.log(">>> ¡ÉXITO! Bingo confirmado.");
-                if (typeof playSound === 'function') playSound('victory');
+                if (typeof playSound === 'function') playSound('win');
             } else {
                 console.warn(">>> El servidor devolvió éxito pero committed es false.");
                 throw new Error("La base de datos no pudo procesar el cambio.");
