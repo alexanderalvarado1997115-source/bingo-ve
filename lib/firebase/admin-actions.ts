@@ -21,74 +21,77 @@ export const getPendingPayments = async () => {
 export const approvePayment = async (paymentId: string, userId: string, ticketsCount: number, drawId: string) => {
     try {
         const { realtimeDb } = await import("./config");
-        const { ref, runTransaction } = await import("firebase/database");
+        const { ref, runTransaction: runRealtimeTransaction, get: getRealtime } = await import("firebase/database");
+        const { runTransaction: runFirestoreTransaction } = await import("firebase/firestore");
 
-        // 1. Get User Data for accurate records
+        let paymentAmount = 0;
         let userName = "Jugador";
-        try {
+
+        // --- PASO 1: TRANSACCIÓN ATÓMICA EN FIRESTORE (Evita doble gasto) ---
+        await runFirestoreTransaction(db, async (transaction) => {
+            // 1. Leer el pago con bloqueo
+            const paymentRef = doc(db, "payments", paymentId);
+            const paymentDoc = await transaction.get(paymentRef);
+
+            if (!paymentDoc.exists()) throw "Pago no encontrado";
+
+            const data = paymentDoc.data();
+            if (data.status !== "pending") throw "El pago ya fue procesado"; // 🛡️ ESCUDO ANTI-DOBLE CLICK
+
+            paymentAmount = Number(data.amount) || 0;
+
+            // 2. Leer usuario (opcional, sin bloqueo estricto necesario)
             const userSnapshot = await getDocs(query(collection(db, "users"), where("uid", "==", userId)));
             if (!userSnapshot.empty) {
-                const userData = userSnapshot.docs[0].data();
-                userName = userData.displayName || userData.email?.split('@')[0] || "Jugador";
+                const uData = userSnapshot.docs[0].data();
+                userName = uData.displayName || uData.email?.split('@')[0] || "Jugador";
             }
-        } catch (e) {
-            console.error("Error fetching user name:", e);
-        }
 
-        // 2. Get Payment Data
-        const paymentSnapshot = await getDocs(query(collection(db, "payments"), where("__name__", "==", paymentId)));
-        if (paymentSnapshot.empty) throw new Error("Pago no encontrado");
+            // 3. Escribir: Actualizar Pago a Aprobado
+            transaction.update(paymentRef, {
+                status: "approved",
+                reviewedAt: serverTimestamp(),
+            });
 
-        const paymentData = paymentSnapshot.docs[0].data();
-        const amount = Number(paymentData.amount) || 0; // FORCE NUMBER BLINDAGE
-
-        const batch = writeBatch(db);
-
-        // 2. Mark Payment as Approved
-        const paymentRef = doc(db, "payments", paymentId);
-        batch.update(paymentRef, {
-            status: "approved",
-            reviewedAt: serverTimestamp(),
+            // 4. Escribir: Crear Tickets
+            const ticketsCollectionRef = collection(db, "tickets");
+            for (let i = 0; i < ticketsCount; i++) {
+                const ticketRef = doc(ticketsCollectionRef);
+                const matrix = generateBingoCard75();
+                const rowMajor = [];
+                for (let r = 0; r < 5; r++) {
+                    for (let c = 0; c < 5; c++) {
+                        rowMajor.push(matrix[c][r]);
+                    }
+                }
+                transaction.set(ticketRef, {
+                    userId,
+                    userName,
+                    drawId,
+                    matrix: rowMajor,
+                    numbers: rowMajor.filter(n => n !== 0), // Guardar números planos para búsqueda fácil
+                    markedNumbers: [],
+                    purchaseTime: serverTimestamp(),
+                });
+            }
         });
 
-        // 3. Create Tickets
-        const ticketsCollectionRef = collection(db, "tickets");
-        for (let i = 0; i < ticketsCount; i++) {
-            const ticketRef = doc(ticketsCollectionRef);
-            const matrix = generateBingoCard75();
-            const rowMajor = [];
-            for (let r = 0; r < 5; r++) {
-                for (let c = 0; c < 5; c++) {
-                    rowMajor.push(matrix[c][r]);
-                }
-            }
-            batch.set(ticketRef, {
-                userId,
-                userName,
-                drawId,
-                matrix: rowMajor,
-                numbers: rowMajor.filter(n => n !== 0),
-                markedNumbers: [],
-                purchaseTime: serverTimestamp(),
-            });
-        }
+        // --- PASO 2: ACTUALIZAR REALTIME DB (Solo si Firestore tuvo éxito) ---
 
-        // --- ATOMIC TRANSACTION FOR FINANCES AND TICKETS ---
-        const gameActiveRef = ref(realtimeDb, "game/active");
+        // A. Finanzas
         const financialsRef = ref(realtimeDb, "financials");
-
-        // Use a transaction for financials
-        await runTransaction(financialsRef, (current) => {
+        await runRealtimeTransaction(financialsRef, (current) => {
             const data = current || { totalRevenue: 0, hoya: 0 };
             return {
                 ...data,
-                totalRevenue: Number(data.totalRevenue || 0) + amount,
-                hoya: Number(data.hoya || 0) + (amount * 0.20)
+                totalRevenue: Number(data.totalRevenue || 0) + paymentAmount,
+                hoya: Number(data.hoya || 0) + (paymentAmount * 0.20)
             };
         });
 
-        // Use a transaction for game config to avoid "pitting" ticket counts
-        await runTransaction(ref(realtimeDb, "game/active/config"), (config) => {
+        // B. Configuración del Juego (Contador Tickets)
+        const gameConfigRef = ref(realtimeDb, "game/active/config");
+        await runRealtimeTransaction(gameConfigRef, (config) => {
             if (!config) return config;
             return {
                 ...config,
@@ -96,21 +99,51 @@ export const approvePayment = async (paymentId: string, userId: string, ticketsC
             };
         });
 
-        // Check for Auto-Start (Swiss Watch)
-        const gameSnap = await import("firebase/database").then(m => m.get(gameActiveRef));
-        const gameState = gameSnap.val();
-        if (gameState.status === 'waiting' && gameState.config.totalTickets >= gameState.config.maxTickets) {
-            await import("firebase/database").then(m => m.update(gameActiveRef, {
-                status: 'countdown',
-                countdownStartTime: Date.now()
-            }));
+        // C. Chequeo de Auto-Start (Usar lógica centralizada de 20 jugadores)
+        try {
+            const { checkAutoStart } = await import("./game-actions");
+            await checkAutoStart();
+        } catch (e) {
+            console.error("Error auto-starting game:", e);
         }
 
-        await batch.commit();
+        // D. Registro Financiero (CRÍTICO - Usa sistema seguro con doble escritura)
+        const { recordTransactionSafe } = await import("./financial-actions");
+        const txnResult = await recordTransactionSafe(
+            'income',
+            'ticket_sale',
+            paymentAmount,
+            `Pago aprobado - ${userName} (${ticketsCount} tickets)`,
+            paymentId
+        );
+
+        if (!txnResult.success) {
+            // Si falla el registro financiero, es CRÍTICO
+            console.error("❌ CRÍTICO: Fallo en registro financiero, iniciando rollback...");
+
+            // Aquí podrías implementar rollback completo si es necesario
+            // Por ahora, lanzamos error para que el admin sepa que debe revisar
+            throw new Error(`Pago procesado pero registro financiero falló: ${txnResult.error}`);
+        }
+
+        console.log(`✅ Pago aprobado exitosamente con registro financiero [TXN: ${txnResult.transactionId}]`);
+
+        // E. Procesar Recompensa de Referidos (10%)
+        // No bloqueante, si falla solo se loguea
+        try {
+            const { processReferralReward } = await import("./financial-actions");
+            if (txnResult.transactionId) {
+                processReferralReward(userId, paymentAmount, txnResult.transactionId); // Async, fire and forget logic or await if critical
+            }
+        } catch (refError) {
+            console.error("⚠️ Error procesando referido (no crítico):", refError);
+        }
+
         return { success: true };
+
     } catch (error) {
         console.error("Error approving payment:", error);
-        return { success: false, error };
+        return { success: false, error: typeof error === 'string' ? error : 'Error interno' };
     }
 };
 
@@ -173,5 +206,96 @@ export const getAllUsers = async () => {
     } catch (error) {
         console.error("Error getting users:", error);
         return [];
+    }
+};
+
+export const getDrawHistory = async () => {
+    try {
+        const q = query(
+            collection(db, "history_games"),
+            orderBy("archivedAt", "desc")
+        );
+        const querySnapshot = await getDocs(q);
+        return querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            archivedAt: doc.data().archivedAt?.toDate ? doc.data().archivedAt.toDate() : doc.data().archivedAt
+        }));
+    } catch (error) {
+        console.error("Error getting draw history:", error);
+        return [];
+    }
+};
+
+// --- User Management Actions ---
+
+export const toggleUserBan = async (userId: string, currentStatus: boolean) => {
+    try {
+        await updateDoc(doc(db, "users", userId), {
+            banned: !currentStatus
+        });
+        return { success: true };
+    } catch (error) {
+        console.error("Error toggling ban:", error);
+        return { success: false, error };
+    }
+};
+
+export const giveFreeTicket = async (userId: string, count: number = 1) => {
+    try {
+        const batch = writeBatch(db);
+        const { realtimeDb } = await import("./config");
+        const { ref, get } = await import("firebase/database");
+
+        // 1. Get Game ID
+        const gameSnap = await get(ref(realtimeDb, "game/active"));
+        const drawId = gameSnap.exists() ? gameSnap.val().drawId : "UNKNOWN_DRAW";
+
+        // 2. Get User Name
+        let userName = "Cortesía";
+        const userSnap = await getDocs(query(collection(db, "users"), where("uid", "==", userId)));
+        if (!userSnap.empty) {
+            userName = userSnap.docs[0].data().displayName || "Jugador";
+        }
+
+        // 3. Create Tickets
+        for (let i = 0; i < count; i++) {
+            const ticketRef = doc(collection(db, "tickets"));
+            const matrix = generateBingoCard75();
+            const rowMajor = [];
+            for (let r = 0; r < 5; r++) {
+                for (let c = 0; c < 5; c++) {
+                    rowMajor.push(matrix[c][r]);
+                }
+            }
+            batch.set(ticketRef, {
+                userId,
+                userName,
+                drawId,
+                matrix: rowMajor,
+                numbers: rowMajor.filter(n => n !== 0),
+                markedNumbers: [],
+                purchaseTime: serverTimestamp(),
+                isCourtesy: true // Flag for analytics
+            });
+        }
+
+        await batch.commit();
+        return { success: true };
+    } catch (error) {
+        console.error("Error giving free ticket:", error);
+        return { success: false, error };
+    }
+};
+
+export const updateUserRole = async (userId: string, newRole: 'admin' | 'user') => {
+    try {
+        await updateDoc(doc(db, "users", userId), {
+            role: newRole
+        });
+        return { success: true };
+    } catch (error) {
+        console.error("Error updating role:", error);
+        return { success: false, error };
     }
 };

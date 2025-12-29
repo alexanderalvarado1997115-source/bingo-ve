@@ -11,18 +11,37 @@ import { doc, setDoc, serverTimestamp } from "firebase/firestore";
  */
 export const registerWithEmail = async (
     email: string,
-    password: string
+    password: string,
+    referralCode?: string
 ): Promise<{ success: boolean; user?: UserCredential; error?: string }> => {
     try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
 
         // Save user to Firestore
+        // Generate unique referral code for the new user (e.g., JG-X8K2P)
+        const newReferralCode = 'JG-' + Math.random().toString(36).substring(2, 7).toUpperCase();
+
+        // Save user to Firestore with Referral Info
+        let referredByUid = null;
+        if (referralCode) {
+            // Find referrer by code
+            const { query, where, getDocs, collection } = await import("firebase/firestore"); // Dynamic import for optimization
+            const q = query(collection(db, "users"), where("referralCode", "==", referralCode));
+            const querySnapshot = await getDocs(q);
+            if (!querySnapshot.empty) {
+                referredByUid = querySnapshot.docs[0].id;
+            }
+        }
+
         await setDoc(doc(db, "users", userCredential.user.uid), {
             uid: userCredential.user.uid,
             email: userCredential.user.email,
             displayName: email.split('@')[0], // Fallback name
             createdAt: serverTimestamp(),
-            role: 'user'
+            role: 'user',
+            referralCode: newReferralCode,
+            referredBy: referredByUid,
+            walletBalance: 0 // Initialize wallet
         });
 
         return { success: true, user: userCredential };

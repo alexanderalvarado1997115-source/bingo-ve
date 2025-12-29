@@ -9,9 +9,9 @@ export default function Home() {
   const { user } = useAuth();
 
   const features = [
-    { icon: Smartphone, text: "Compra fácil con Pago Móvil" },
-    { icon: Zap, text: "Sorteos cada 30 minutos" },
-    { icon: Trophy, text: "Premios inmediatos" },
+    { icon: Smartphone, text: "Pagos automáticos (Binance)" },
+    { icon: Zap, text: "Gana 10% por referir amigos" },
+    { icon: Trophy, text: "Bingo, Slots y más..." },
     { icon: ShieldCheck, text: "100% seguro y transparente" },
   ];
 
@@ -44,10 +44,10 @@ export default function Home() {
               transition={{ delay: 0.2 }}
             >
               <h1 className="text-5xl md:text-7xl font-black text-white tracking-tighter mb-2">
-                BINGO <span className="text-orange-500">VE</span>
+                JUEGA <span className="text-orange-500">Y GANA</span>
               </h1>
               <p className="text-xl md:text-2xl text-slate-400 font-medium tracking-wide border-b border-white/5 pb-6 inline-block">
-                Sorteos en Tiempo Real
+                Multi-Juegos en Tiempo Real
               </p>
             </motion.div>
 

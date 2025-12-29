@@ -38,33 +38,37 @@ export default function BingoCard({ id, numbers, drawnNumbers, onStateChange, ha
         return gridNumbers.filter(num => !currentMarked.includes(num)).length;
     }, [gridNumbers]);
 
+    // Initial Load Logic
     useEffect(() => {
         const saved = localStorage.getItem(`marks_${id}`);
+        let loadedMarked = [0];
+
         if (saved) {
-            const loadedMarked = JSON.parse(saved);
+            try { loadedMarked = JSON.parse(saved); } catch (e) { }
             setMarked(loadedMarked);
-        } else {
-            setMarked([0]);
         }
-    }, [id]);
 
-    // Update isWinner whenever marked changes
-    useEffect(() => {
-        const win = checkWinCondition(marked);
-        const missing = getMissingCount(marked);
+        // Run validation immediately on mount without causing render loop
+        const win = checkWinCondition(loadedMarked);
+        const missing = getMissingCount(loadedMarked);
 
+        // Batch updates
         setIsWinner(win);
         setMissingCount(missing);
 
-        if (onStateChange) {
-            onStateChange(id, win, missing);
-        }
-    }, [marked, checkWinCondition, getMissingCount, id]);
+        // Notify parent only if meaningful state exists (prevents hydration mismatch loop)
+        const timeout = setTimeout(() => {
+            if (onStateChange) onStateChange(id, win, missing);
+        }, 100);
+        return () => clearTimeout(timeout);
+
+    }, [id]); // Only run once on mount per ID
+
+    // NO MORE DANGEROUS USEEFFECT LOOP HERE
 
     const toggleMark = (num: number) => {
-        if (num === 0) return; // Cannot toggle free space
+        if (num === 0) return;
 
-        // Only allow marking if drawn
         if (!drawnNumbers.includes(num)) return;
 
         let newMarked;
@@ -76,6 +80,14 @@ export default function BingoCard({ id, numbers, drawnNumbers, onStateChange, ha
 
         setMarked(newMarked);
         localStorage.setItem(`marks_${id}`, JSON.stringify(newMarked));
+
+        // Calculate and Notify Immediately (Event Driven instead of Effect Driven)
+        const win = checkWinCondition(newMarked);
+        const missing = getMissingCount(newMarked);
+
+        setIsWinner(win);
+        setMissingCount(missing);
+        if (onStateChange) onStateChange(id, win, missing);
     };
 
     // Proximity visuals logic

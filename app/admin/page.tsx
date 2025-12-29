@@ -3,8 +3,13 @@ import { useEffect, useState } from "react";
 import { getPendingPayments, approvePayment, rejectPayment, getAllUsers } from "@/lib/firebase/admin-actions";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useRouter } from "next/navigation";
-import { Check, X, RefreshCw, Users, CreditCard, LayoutDashboard, History, Settings, LogOut, Bell, ShieldCheck, Zap, Search, Circle, User } from "lucide-react";
+import { Check, X, RefreshCw, Users, CreditCard, LayoutDashboard, History, Settings, LogOut, Bell, ShieldCheck, Zap, Search, Circle, User, DollarSign } from "lucide-react";
 import DrawControl from "@/components/admin/DrawControl";
+import FinancialCenter from "@/components/admin/FinancialCenter";
+import PaymentManagement from "@/components/admin/PaymentManagement";
+import DrawHistory from "@/components/admin/DrawHistory";
+import UserManagement from "@/components/admin/UserManagement";
+import GlobalSettings from "@/components/admin/GlobalSettings";
 import { subscribeToPendingPayments } from "@/lib/firebase/payment-listener";
 import { subscribeToPresence } from "@/lib/firebase/presence";
 import { motion, AnimatePresence } from "framer-motion";
@@ -18,7 +23,7 @@ export default function AdminDashboard() {
     const [searchQuery, setSearchQuery] = useState("");
     const [loading, setLoading] = useState(true);
     const [drawId, setDrawId] = useState<string>("ACTIVE_DRAW");
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'payments' | 'history' | 'users'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'payments' | 'history' | 'users' | 'finanzas' | 'settings'>('dashboard');
 
     const ADMIN_EMAIL = "admin@bingove.suport.com";
 
@@ -94,6 +99,12 @@ export default function AdminDashboard() {
                         label="Dashboard"
                     />
                     <SidebarLink
+                        active={activeTab === 'finanzas'}
+                        onClick={() => setActiveTab('finanzas')}
+                        icon={<DollarSign size={20} />}
+                        label="Centro Financiero"
+                    />
+                    <SidebarLink
                         active={activeTab === 'users'}
                         onClick={() => setActiveTab('users')}
                         icon={<Users size={20} />}
@@ -113,6 +124,13 @@ export default function AdminDashboard() {
                         onClick={() => setActiveTab('history')}
                         icon={<History size={20} />}
                         label="Historial de Sorteos"
+                    />
+                    <div className="h-px bg-white/5 my-2" />
+                    <SidebarLink
+                        active={activeTab === 'settings'}
+                        onClick={() => setActiveTab('settings')}
+                        icon={<Settings size={20} />}
+                        label="Configuración Global"
                     />
                 </nav>
 
@@ -143,7 +161,10 @@ export default function AdminDashboard() {
                 <header className="h-20 bg-[#0f111a]/50 backdrop-blur-xl border-b border-white/5 px-8 flex items-center justify-between z-40">
                     <div className="flex items-center gap-4">
                         <h1 className="text-xl font-black text-white uppercase tracking-tighter">
-                            {activeTab === 'dashboard' ? 'Control de Sorteo' : activeTab === 'payments' ? 'Validación de Pagos' : activeTab === 'users' ? 'Gestión de Usuarios' : 'Historial de Juegos'}
+                            {activeTab === 'dashboard' ? 'Control de Sorteo' :
+                                activeTab === 'finanzas' ? 'Centro Financiero' :
+                                    activeTab === 'payments' ? 'Validación de Pagos' :
+                                        activeTab === 'users' ? 'Gestión de Usuarios' : 'Historial de Juegos'}
                         </h1>
                         <div className="h-4 w-px bg-white/10 mx-2" />
                         <div className="flex items-center gap-2">
@@ -187,207 +208,120 @@ export default function AdminDashboard() {
                                         <DrawControl />
                                     </div>
 
-                                    {/* Right Side: Quick Lists */}
+                                    {/* Right Side: Quick Stats & Server Status */}
                                     <div className="xl:col-span-8 space-y-8">
-                                        {/* Payments Quick Glance */}
-                                        <div className="bg-[#0f111a] rounded-[2.5rem] border border-white/5 overflow-hidden shadow-2xl">
-                                            <div className="p-8 border-b border-white/5 flex justify-between items-center">
-                                                <div>
-                                                    <h3 className="text-xl font-black text-white uppercase tracking-tighter">Validación de Pagos</h3>
-                                                    <p className="text-xs text-slate-500 mt-1">Revisa y aprueba las transferencias de los usuarios.</p>
-                                                </div>
-                                                <button onClick={() => setPayments([])} className="p-3 text-slate-400 hover:text-white bg-white/5 rounded-2xl border border-white/5">
-                                                    <RefreshCw size={18} />
-                                                </button>
-                                            </div>
-
-                                            <div className="min-h-[300px]">
-                                                {payments.length === 0 ? (
-                                                    <div className="p-20 text-center space-y-4">
-                                                        <div className="w-16 h-16 bg-slate-900 rounded-3xl flex items-center justify-center mx-auto text-slate-700">
-                                                            <ShieldCheck size={32} />
-                                                        </div>
-                                                        <p className="text-slate-500 font-medium">Bandeja de entrada vacía por ahora.</p>
-                                                    </div>
-                                                ) : (
-                                                    <div className="overflow-x-auto">
-                                                        <table className="w-full text-left">
-                                                            <thead className="bg-[#161822] text-slate-500 text-[10px] font-black uppercase tracking-[0.2em]">
-                                                                <tr>
-                                                                    <th className="px-8 py-5">Usuario / Teléfono</th>
-                                                                    <th className="px-8 py-5">Referencia Pago</th>
-                                                                    <th className="px-8 py-5">Monto</th>
-                                                                    <th className="px-8 py-5 text-right">Acciones</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody className="divide-y divide-white/5">
-                                                                {payments.map((p) => (
-                                                                    <tr key={p.id} className="hover:bg-white/[0.02] transition-colors group">
-                                                                        <td className="px-8 py-6">
-                                                                            <div className="flex items-center gap-3">
-                                                                                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 text-xs font-bold font-mono">
-                                                                                    {p.userId.slice(0, 2).toUpperCase()}
-                                                                                </div>
-                                                                                <div>
-                                                                                    <div className="text-sm font-black text-white">{p.phone || 'Sin Teléfono'}</div>
-                                                                                    <div className="text-[10px] text-slate-500 font-bold uppercase overflow-hidden w-24 text-ellipsis">ID: {p.userId}</div>
-                                                                                </div>
-                                                                            </div>
-                                                                        </td>
-                                                                        <td className="px-8 py-6">
-                                                                            <div className="inline-block px-3 py-1 bg-orange-500/10 text-orange-400 rounded-lg text-xs font-black tracking-widest border border-orange-500/10 mb-1">
-                                                                                {p.reference}
-                                                                            </div>
-                                                                            {p.last4Digits && <div className="text-[10px] text-slate-500 font-bold ml-1">CONFIRMACIÓN: ****{p.last4Digits}</div>}
-                                                                        </td>
-                                                                        <td className="px-8 py-6">
-                                                                            <div className="text-lg font-black text-white">
-                                                                                {p.amount} <span className="text-[10px] text-slate-500 font-bold uppercase ml-1">Bs</span>
-                                                                            </div>
-                                                                            <div className="text-[10px] text-indigo-400 uppercase font-black tracking-widest">{p.ticketsCount} Cartones</div>
-                                                                        </td>
-                                                                        <td className="px-8 py-6">
-                                                                            <div className="flex justify-end gap-3 translate-x-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 transition-all">
-                                                                                <button
-                                                                                    onClick={() => handleAction(p.id, p.userId, p.ticketsCount, 'reject')}
-                                                                                    className="p-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-2xl border border-red-500/10 transition-all shadow-lg shadow-red-500/5"
-                                                                                >
-                                                                                    <X size={20} />
-                                                                                </button>
-                                                                                <button
-                                                                                    onClick={() => handleAction(p.id, p.userId, p.ticketsCount, 'approve')}
-                                                                                    className="p-3 bg-green-500 text-white hover:bg-green-400 rounded-2xl border border-green-500/10 transition-all shadow-lg shadow-green-500/20"
-                                                                                >
-                                                                                    <Check size={20} strokeWidth={3} />
-                                                                                </button>
-                                                                            </div>
-                                                                        </td>
-                                                                    </tr>
-                                                                ))}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        {/* Bottom Secondary Grid */}
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                            <div className="bg-[#0f111a] p-8 rounded-[2.5rem] border border-white/5 shadow-xl">
+                                            {/* Support Tip Widget */}
+                                            <div className="bg-[#0f111a] p-8 rounded-[2.5rem] border border-white/5 shadow-xl h-full">
                                                 <div className="flex items-center gap-3 text-indigo-400 mb-6">
                                                     <div className="p-3 bg-indigo-500/10 rounded-2xl"><Zap size={20} /></div>
                                                     <h4 className="font-black text-sm uppercase tracking-widest">Consejo de Soporte</h4>
                                                 </div>
                                                 <p className="text-sm text-slate-400 leading-relaxed italic">
-                                                    "Asegúrate de verificar que el monto transferido coincida exactamente con lo solicitado antes de aprobar el cartón para evitar desajustes en la recaudación."
+                                                    "Mantén el sorteo controlado. Si tienes muchos pagos pendientes, es mejor pausar el sorteo unos minutos, aprobar todo en la pestaña 'Pagos', y luego continuar."
                                                 </p>
                                             </div>
-                                            <div className="bg-[#0f111a] p-8 rounded-[2.5rem] border border-white/5 shadow-xl">
+
+                                            {/* Server Status Widget */}
+                                            <div className="bg-[#0f111a] p-8 rounded-[2.5rem] border border-white/5 shadow-xl h-full">
                                                 <div className="flex items-center gap-3 text-green-400 mb-6">
-                                                    <div className="p-3 bg-green-500/10 rounded-2xl"><Users size={20} /></div>
-                                                    <h4 className="font-black text-sm uppercase tracking-widest">Estado de Servidores</h4>
+                                                    <div className="p-3 bg-green-500/10 rounded-2xl"><ShieldCheck size={20} /></div>
+                                                    <h4 className="font-black text-sm uppercase tracking-widest">Estado del Sistema</h4>
                                                 </div>
                                                 <div className="space-y-4">
                                                     <div className="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5">
                                                         <span className="text-[10px] font-black uppercase text-slate-500">Firebase Realtime</span>
-                                                        <span className="text-[10px] font-black uppercase text-green-400">Excelente</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                                                            <span className="text-[10px] font-black uppercase text-green-400">Online</span>
+                                                        </div>
                                                     </div>
                                                     <div className="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5">
-                                                        <span className="text-[10px] font-black uppercase text-slate-500">Auth & Storage</span>
-                                                        <span className="text-[10px] font-black uppercase text-green-400">Sincronizado</span>
+                                                        <span className="text-[10px] font-black uppercase text-slate-500">Bot de WhatsApp</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                                                            <span className="text-[10px] font-black uppercase text-green-400">Activo</span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
+
+                                        {/* Payments Summary Mini-Widget (Optional Link) */}
+                                        <div
+                                            onClick={() => setActiveTab('payments')}
+                                            className="bg-gradient-to-r from-indigo-900/20 to-purple-900/20 p-8 rounded-[2.5rem] border border-indigo-500/20 cursor-pointer hover:border-indigo-500/40 transition-all group relative overflow-hidden"
+                                        >
+                                            <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                                                <CreditCard size={100} />
+                                            </div>
+                                            <div className="relative z-10 flex items-center justify-between">
+                                                <div>
+                                                    <h3 className="text-xl font-black text-white uppercase tracking-tighter mb-2 group-hover:text-indigo-400 transition-colors">
+                                                        Gestión de Pagos
+                                                    </h3>
+                                                    <p className="text-sm text-slate-400 font-medium">
+                                                        Tienes <span className="text-white font-bold">{payments.length}</span> pagos pendientes de revisión.
+                                                    </p>
+                                                </div>
+                                                <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-indigo-600/30 group-hover:scale-110 transition-transform">
+                                                    <Check size={24} strokeWidth={3} />
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
+                                </motion.div>
+                            ) : activeTab === 'payments' ? (
+                                <motion.div
+                                    key="payments"
+                                    initial={{ opacity: 0, scale: 0.98 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    className="h-full"
+                                >
+                                    <PaymentManagement
+                                        payments={payments}
+                                        onAction={handleAction}
+                                        onRefresh={() => setPayments([...payments])}
+                                    />
                                 </motion.div>
                             ) : activeTab === 'users' ? (
                                 <motion.div
                                     key="users"
                                     initial={{ opacity: 0, scale: 0.98 }}
                                     animate={{ opacity: 1, scale: 1 }}
-                                    className="bg-[#0f111a] rounded-[2.5rem] border border-white/5 overflow-hidden shadow-2xl"
+                                    className="h-full"
                                 >
-                                    <div className="p-8 border-b border-white/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                        <div>
-                                            <h3 className="text-xl font-black text-white uppercase tracking-tighter">Directorio de Jugadores</h3>
-                                            <p className="text-xs text-slate-500 mt-1">Monitorea quién está conectado y participa en tiempo real.</p>
-                                        </div>
-                                        <div className="relative w-full md:w-80">
-                                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-                                            <input
-                                                type="text"
-                                                placeholder="Buscar por nombre o correo..."
-                                                value={searchQuery}
-                                                onChange={(e) => setSearchQuery(e.target.value)}
-                                                className="w-full bg-[#161822] border border-white/5 rounded-2xl py-3 pl-12 pr-4 text-xs font-bold text-white outline-none focus:border-indigo-500/50 transition-all"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-left">
-                                            <thead className="bg-[#161822] text-slate-500 text-[10px] font-black uppercase tracking-[0.2em]">
-                                                <tr>
-                                                    <th className="px-8 py-5">Jugador</th>
-                                                    <th className="px-8 py-5">Estado</th>
-                                                    <th className="px-8 py-5">Correo</th>
-                                                    <th className="px-8 py-5">Registrado</th>
-                                                    <th className="px-8 py-5 text-right">Acciones</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-white/5">
-                                                {allUsers
-                                                    .filter(u => u.displayName?.toLowerCase().includes(searchQuery.toLowerCase()) || u.email?.toLowerCase().includes(searchQuery.toLowerCase()))
-                                                    .map((u) => {
-                                                        const status = presenceMap[u.uid]?.state || 'offline';
-                                                        const isOnline = status === 'online';
-                                                        return (
-                                                            <tr key={u.uid} className="hover:bg-white/[0.02] transition-colors group">
-                                                                <td className="px-8 py-6">
-                                                                    <div className="flex items-center gap-3">
-                                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black shadow-lg ${isOnline ? 'bg-green-500/10 text-green-500' : 'bg-slate-800 text-slate-500'}`}>
-                                                                            <User size={18} />
-                                                                        </div>
-                                                                        <div>
-                                                                            <div className="text-sm font-black text-white">{u.displayName || 'Sin Nombre'}</div>
-                                                                            <div className="text-[10px] text-slate-500 font-bold uppercase overflow-hidden w-24 text-ellipsis">ID: {u.uid.slice(0, 8)}</div>
-                                                                        </div>
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-8 py-6">
-                                                                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${isOnline ? 'bg-green-500/10 text-green-500' : 'bg-slate-800 text-slate-500'}`}>
-                                                                        <Circle size={8} fill="currentColor" className={isOnline ? 'animate-pulse' : ''} />
-                                                                        {isOnline ? 'En Línea' : 'Desconectado'}
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-8 py-6">
-                                                                    <div className="text-xs font-bold text-slate-300">{u.email}</div>
-                                                                </td>
-                                                                <td className="px-8 py-6">
-                                                                    <div className="text-xs font-bold text-slate-500">
-                                                                        {u.createdAt ? new Date(u.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-8 py-6 text-right">
-                                                                    <button className="p-2 text-slate-500 hover:text-white transition-colors">
-                                                                        <Settings size={16} />
-                                                                    </button>
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                            </tbody>
-                                        </table>
-                                        {allUsers.length === 0 && (
-                                            <div className="p-20 text-center space-y-4">
-                                                <div className="w-16 h-16 bg-slate-900 rounded-3xl flex items-center justify-center mx-auto text-slate-700">
-                                                    <Users size={32} />
-                                                </div>
-                                                <p className="text-slate-500 font-medium">Aún no hay usuarios registrados.</p>
-                                            </div>
-                                        )}
-                                    </div>
+                                    <UserManagement
+                                        users={allUsers}
+                                        presenceMap={presenceMap}
+                                        onRefresh={() => getAllUsers().then(setAllUsers)}
+                                    />
+                                </motion.div>
+                            ) : activeTab === 'finanzas' ? (
+                                <motion.div
+                                    key="finanzas"
+                                    initial={{ opacity: 0, scale: 0.98 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                >
+                                    <FinancialCenter />
+                                </motion.div>
+                            ) : activeTab === 'history' ? (
+                                <motion.div
+                                    key="history"
+                                    initial={{ opacity: 0, scale: 0.98 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    className="h-full"
+                                >
+                                    <DrawHistory />
+                                </motion.div>
+                            ) : activeTab === 'settings' ? (
+                                <motion.div
+                                    key="settings"
+                                    initial={{ opacity: 0, scale: 0.98 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    className="h-full"
+                                >
+                                    <GlobalSettings />
                                 </motion.div>
                             ) : (
                                 <div className="p-20 text-center text-slate-500 bg-[#0f111a] rounded-[2.5rem] border border-white/5">

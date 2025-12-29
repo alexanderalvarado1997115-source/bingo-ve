@@ -5,6 +5,16 @@ import { collection, getDocs, deleteDoc, doc, writeBatch, addDoc, serverTimestam
 const GAME_STATE_PATH = "game/active";
 const PRESENCE_PATH = "presence/users";
 
+// --- Utility: Timeout Wrapper for Firebase Operations ---
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number = 10000, operation: string = "Operación"): Promise<T> {
+    return Promise.race([
+        promise,
+        new Promise<T>((_, reject) =>
+            setTimeout(() => reject(new Error(`${operation} excedió el tiempo límite (${timeoutMs}ms). Verifica tu conexión.`)), timeoutMs)
+        )
+    ]);
+}
+
 export interface GameState {
     status: 'waiting' | 'countdown' | 'active' | 'paused' | 'validating' | 'finished';
     mode: 'auto' | 'manual';
@@ -124,6 +134,9 @@ export const initializeGame = async (
         winners: [],
         config: config
     });
+
+    // Check auto-start immediately
+    await checkAutoStart();
 };
 
 export const updateGameMode = async (mode: 'auto' | 'manual') => {
@@ -228,7 +241,13 @@ export const drawNextBall = async () => {
 export const verifyBingoWin = async (winner: any) => {
     console.log("SERVER: Iniciando verifyBingoWin para ticket:", winner.ticketId);
     const gameRef = ref(realtimeDb, GAME_STATE_PATH);
-    const snap = await get(gameRef);
+
+    // Get game state with timeout protection
+    const snap = await withTimeout(
+        get(gameRef),
+        8000,
+        "Obtener estado del juego para verificación"
+    );
 
     if (!snap.exists()) {
         console.error("SERVER: El nodo de juego no existe.");
@@ -266,16 +285,20 @@ export const verifyBingoWin = async (winner: any) => {
     console.log("SERVER: Nueva lista de ganadores generada. Enviando actualización...");
 
     try {
-        await update(gameRef, {
-            status: 'finished',
-            winners: newWinnersList,
-            socialStatus: {
-                message: `🏆 ¡BINGO CONFIRMADO! Felicidades al ganador.`,
-                tensionLevel: 'low',
-                topPlayers: [],
-                lastUpdate: Date.now()
-            }
-        });
+        await withTimeout(
+            update(gameRef, {
+                status: 'finished',
+                winners: newWinnersList,
+                socialStatus: {
+                    message: `🏆 ¡BINGO CONFIRMADO! Felicidades al ganador.`,
+                    tensionLevel: 'low',
+                    topPlayers: [],
+                    lastUpdate: Date.now()
+                }
+            }),
+            8000,
+            "Confirmar ganador"
+        );
         console.log("SERVER: Actualización en Firebase exitosa.");
     } catch (firebaseErr: any) {
         console.error("SERVER: Error al actualizar Firebase:", firebaseErr);
@@ -449,29 +472,41 @@ export const resetWeeklyHoya = async () => {
 // --- Archive and Reset Logic ---
 export const archiveCurrentGame = async () => {
     try {
-        // 1. Get Game State
-        const gameSnap = await get(ref(realtimeDb, GAME_STATE_PATH));
+        // 1. Get Game State (with timeout)
+        const gameSnap = await withTimeout(
+            get(ref(realtimeDb, GAME_STATE_PATH)),
+            8000,
+            "Obtener estado del juego"
+        );
         if (!gameSnap.exists()) return { success: false, error: "No active game" };
         const gameState = gameSnap.val() as GameState;
 
-        // 2. Get All Active Tickets
-        const ticketsSnap = await getDocs(collection(db, "tickets"));
+        // 2. Get All Active Tickets (with timeout)
+        const ticketsSnap = await withTimeout(
+            getDocs(collection(db, "tickets")),
+            10000,
+            "Obtener tickets"
+        );
         console.log(`Archivando ${ticketsSnap.size} tickets...`);
 
         // 3. Batch Operations Logic (Chunking 200 ops limit)
         const BATCH_SIZE = 200;
         const historyGameRef = doc(db, "history_games", gameState.drawId || `DRAW_${Date.now()}`);
 
-        // Save Summary first
+        // Save Summary first (with timeout)
         const summaryBatch = writeBatch(db);
         summaryBatch.set(historyGameRef, {
             ...gameState,
             archivedAt: firestoreTimestamp(),
             totalTickets: ticketsSnap.size
         });
-        await summaryBatch.commit();
+        await withTimeout(
+            summaryBatch.commit(),
+            8000,
+            "Guardar resumen del juego"
+        );
 
-        // Save Tickets in chunks
+        // Save Tickets in chunks (with timeout per chunk)
         const chunks = [];
         const docs = ticketsSnap.docs;
         for (let i = 0; i < docs.length; i += BATCH_SIZE) {
@@ -486,21 +521,29 @@ export const archiveCurrentGame = async () => {
                 batch.set(archiveTicketRef, ticketData);
                 batch.delete(t.ref);
             });
-            await batch.commit();
+            await withTimeout(
+                batch.commit(),
+                10000,
+                "Archivar lote de tickets"
+            );
         }
 
-        // 4. Reset RTDB to Waiting
-        await set(ref(realtimeDb, GAME_STATE_PATH), {
-            status: 'waiting',
-            mode: 'auto',
-            currentNumber: null,
-            history: [],
-            lastBallTime: Date.now(),
-            countdownStartTime: null,
-            drawId: `SORTEO_${Date.now()}`, // Generate new ID
-            winners: [],
-            config: gameState.config // Keep config
-        });
+        // 4. Reset RTDB to Waiting (with timeout)
+        await withTimeout(
+            set(ref(realtimeDb, GAME_STATE_PATH), {
+                status: 'waiting',
+                mode: 'auto',
+                currentNumber: null,
+                history: [],
+                lastBallTime: Date.now(),
+                countdownStartTime: null,
+                drawId: `SORTEO_${Date.now()}`, // Generate new ID
+                winners: [],
+                config: gameState.config // Keep config
+            }),
+            8000,
+            "Reiniciar juego"
+        );
 
         return { success: true };
 
@@ -525,14 +568,82 @@ export const submitWinnerPaymentDetails = async (ticketId: string, details: { ba
     });
 };
 
+import { recordTransaction } from "./financial-actions";
+
+// ... existing imports
+
 export const markWinnerAsPaid = async (ticketId: string) => {
+    const gameRef = ref(realtimeDb, GAME_STATE_PATH);
+    let prizeAmount = 0;
+    let winnerName = "Ganador";
+
+    try {
+        // 1. Transaction to update state AND get data for logging (with timeout protection)
+        const result = await withTimeout(
+            runTransaction(gameRef, (data: GameState | null) => {
+                if (!data || !data.winners) return;
+                const index = data.winners.findIndex(w => w.ticketId === ticketId);
+                if (index === -1) return;
+
+                // Get prize info before updating
+                const winner = data.winners[index];
+                const position = winner.prizePosition || 1;
+                // Default to first prize if config missing, or 0 safely
+                const prizeList = data.config?.prizes || [0];
+                // prizePosition is 1-based usually
+                const amount = prizeList[position - 1] || prizeList[0] || 0;
+
+                prizeAmount = amount;
+                winnerName = winner.paymentDetails?.name || winner.userId;
+
+                // Update status
+                data.winners[index].payoutStatus = 'paid';
+                return data;
+            }),
+            10000,
+            "Confirmar pago"
+        );
+
+        // 2. If successful, record the expense in Financial System (CRÍTICO - Sistema seguro)
+        if (result.committed && prizeAmount > 0) {
+            const { recordTransactionSafe } = await import("./financial-actions");
+            const txnResult = await withTimeout(
+                recordTransactionSafe(
+                    'expense',
+                    'prize_payout',
+                    prizeAmount,
+                    `Pago de premio a ${winnerName} (Cartón ${ticketId.slice(-4)})`,
+                    ticketId
+                ),
+                8000,
+                "Registrar transacción"
+            );
+
+            if (!txnResult.success) {
+                // Si falla el registro, es CRÍTICO - lanzar error
+                throw new Error(`Premio marcado como pagado pero registro financiero falló: ${txnResult.error}`);
+            }
+
+            console.log(`✅ Premio pagado y registrado exitosamente [TXN: ${txnResult.transactionId}]`);
+        }
+
+        return result;
+    } catch (error) {
+        console.error("Error en markWinnerAsPaid:", error);
+        throw error; // Re-throw para que el componente pueda manejarlo
+    }
+};
+
+export const removeWinner = async (ticketId: string) => {
     const gameRef = ref(realtimeDb, GAME_STATE_PATH);
     return runTransaction(gameRef, (data: GameState | null) => {
         if (!data || !data.winners) return;
-        const index = data.winners.findIndex(w => w.ticketId === ticketId);
-        if (index === -1) return;
 
-        data.winners[index].payoutStatus = 'paid';
+        // Remove the winner
+        data.winners = data.winners.filter(w => w.ticketId !== ticketId);
+
+        // Safety: If no winners left, we might want to revert status, but let's leave it up to Admin to manually Reset or Resume if they deleted everyone.
+        // Actually, if we delete a "ghost" winner, we just want it gone.
         return data;
     });
 };
@@ -589,5 +700,45 @@ export const claimBingo = async (userId: string, claims: { ticketId: string, num
     } catch (error) {
         console.error("Error claiming bingo:", error);
         return { success: false, error };
+    }
+};
+
+/**
+ * Verifica si se cumplen las condiciones para el inicio automático del juego.
+ * Regla: Mínimo 20 jugadores conectados o tickets vendidos para arrancar.
+ */
+export const checkAutoStart = async () => {
+    try {
+        const gameRef = ref(realtimeDb, GAME_STATE_PATH);
+        const gameSnap = await get(gameRef);
+
+        if (!gameSnap.exists()) return;
+
+        const gameState = gameSnap.val() as GameState;
+
+        // Solo actuar si está en espera y en modo automático
+        if (gameState.status !== 'waiting' || gameState.mode !== 'auto') return;
+
+        // 1. Obtener conteo de jugadores únicos con tickets (más seguro que online count)
+        const ticketsSnap = await getDocs(collection(db, "tickets"));
+        const uniquePlayers = new Set(ticketsSnap.docs.map(doc => doc.data().userId)).size;
+
+        const MIN_PLAYERS_TO_START = 20;
+
+        if (uniquePlayers >= MIN_PLAYERS_TO_START) {
+            console.log(`🚀 AUTO-START TRIGGERED: ${uniquePlayers} players ready.`);
+            await startCountdown();
+        } else {
+            // Actualizar estado social para informar faltantes
+            const missing = MIN_PLAYERS_TO_START - uniquePlayers;
+            await update(ref(realtimeDb, `${GAME_STATE_PATH}/socialStatus`), {
+                message: `Esperando jugadores... Faltan ${missing} para iniciar`,
+                tensionLevel: 'low',
+                lastUpdate: Date.now()
+            });
+        }
+
+    } catch (error) {
+        console.error("Error en checkAutoStart:", error);
     }
 };

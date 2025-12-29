@@ -19,6 +19,7 @@ function LoginFormContent() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
+    const [referralCode, setReferralCode] = useState("");
 
     // Detect mode from URL
     useEffect(() => {
@@ -62,7 +63,7 @@ function LoginFormContent() {
             if (mode === 'login') {
                 result = await loginWithEmail(email, password);
             } else {
-                result = await registerWithEmail(email, password);
+                result = await registerWithEmail(email, password, referralCode);
             }
 
             if (result.success) {
@@ -169,29 +170,49 @@ function LoginFormContent() {
 
                         <AnimatePresence>
                             {mode === 'register' && (
-                                <motion.div
-                                    initial={{ opacity: 0, height: 0 }}
-                                    animate={{ opacity: 1, height: 'auto' }}
-                                    exit={{ opacity: 0, height: 0 }}
-                                    className="space-y-2 overflow-hidden"
-                                >
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-2">Confirmar Contraseña</label>
-                                    <div className="relative">
-                                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                                        <input
-                                            type="password"
-                                            required={mode === 'register'}
-                                            value={confirmPassword}
-                                            onChange={(e) => setConfirmPassword(e.target.value)}
-                                            placeholder="••••••••"
-                                            className="w-full bg-slate-950 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white focus:border-orange-500 outline-none transition-colors"
-                                        />
-                                    </div>
-                                    <div className="flex items-center gap-2 pt-2">
-                                        <input type="checkbox" required id="terms" className="w-4 h-4 rounded border-white/10 bg-slate-950 text-orange-500 focus:ring-0" />
-                                        <label htmlFor="terms" className="text-xs text-slate-400">Acepto términos y condiciones</label>
-                                    </div>
-                                </motion.div>
+                                <>
+                                    <motion.div
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        className="space-y-2 overflow-hidden"
+                                    >
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-2">Código de Referido (Opcional)</label>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                value={referralCode}
+                                                onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                                                placeholder="Ej. JG-X8K2P"
+                                                className="w-full bg-slate-950 border border-white/10 rounded-2xl py-4 px-4 text-white focus:border-orange-500 outline-none transition-colors text-center font-mono tracking-widest uppercase"
+                                            />
+                                        </div>
+                                    </motion.div>
+
+                                    <motion.div
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        className="space-y-2 overflow-hidden"
+                                    >
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-2">Confirmar Contraseña</label>
+                                        <div className="relative">
+                                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                                            <input
+                                                type="password"
+                                                required={mode === 'register'}
+                                                value={confirmPassword}
+                                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                                placeholder="••••••••"
+                                                className="w-full bg-slate-950 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white focus:border-orange-500 outline-none transition-colors"
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-2 pt-2">
+                                            <input type="checkbox" required id="terms" className="w-4 h-4 rounded border-white/10 bg-slate-950 text-orange-500 focus:ring-0" />
+                                            <label htmlFor="terms" className="text-xs text-slate-400">Acepto términos y condiciones</label>
+                                        </div>
+                                    </motion.div>
+                                </>
                             )}
                         </AnimatePresence>
 
@@ -219,8 +240,8 @@ function LoginFormContent() {
                         </div>
                     )}
                 </div>
-            </motion.div>
-        </div>
+            </motion.div >
+        </div >
     );
 }
 

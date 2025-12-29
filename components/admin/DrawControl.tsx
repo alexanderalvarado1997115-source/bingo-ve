@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { ref, update, onValue } from "firebase/database";
 import { realtimeDb } from "@/lib/firebase/config";
 import { startCountdown, finishCountdown, pauseGame, drawNextBall, subscribeToGame, GameState, initializeGame, addWinner, updateGameMode, updateGameConfig, subscribeToOnlineCount, subscribeToConnection, fullResetSystem, archiveCurrentGame, markWinnerAsPaid, verifyBingoWin, rejectBingoWin, resetWeeklyHoya } from "@/lib/firebase/game-actions";
-import { Play, Pause, FastForward, Timer, Settings, Users, MousePointer2, Zap, Save, X, Plus, Minus, SkipForward, Archive, Copy, CheckCircle, CreditCard, Smartphone, User, Volume2, VolumeX, AlertTriangle, Trophy, BarChart3, Clock, Ticket, CheckCircle2 } from "lucide-react";
+import { Play, Pause, FastForward, Timer, Settings, Users, MousePointer2, Zap, Save, X, Plus, Minus, SkipForward, Archive, Copy, CheckCircle, CreditCard, Smartphone, User, Volume2, VolumeX, AlertTriangle, Trophy, BarChart3, Clock, Ticket, CheckCircle2, Trash2 } from "lucide-react";
 import { getAllActiveTickets } from "@/lib/firebase/admin-actions";
 import { checkWinner, getWinningDetails } from "@/utils/game-logic";
 import { motion, AnimatePresence } from "framer-motion";
@@ -275,7 +275,7 @@ export default function DrawControl() {
                             </h3>
                             {claim.multiClaimCount && (
                                 <div className="bg-orange-500 text-white px-3 py-1 rounded-lg text-xs font-black animate-bounce shadow-lg shadow-orange-500/20">
-                                    +{claim.multiClaimCount * 500} Bs
+                                    +{claim.multiClaimCount * (gameState.config.prizes[0] || 500)} Bs
                                 </div>
                             )}
                         </div>
@@ -332,7 +332,7 @@ export default function DrawControl() {
                                     disabled={isConfirming}
                                     className={`flex-1 ${isConfirming ? 'bg-slate-700' : 'bg-orange-500 hover:bg-orange-400'} text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] shadow-xl shadow-orange-500/20 active:scale-95 transition-all`}
                                 >
-                                    {isConfirming ? 'PROCESANDO...' : `¡VÁLIDO! (PAGAR ${claim.multiClaimCount ? claim.multiClaimCount * 500 : 500} Bs)`}
+                                    {isConfirming ? 'PROCESANDO...' : `¡VÁLIDO! (PAGAR ${claim.multiClaimCount ? claim.multiClaimCount * (gameState.config.prizes[0] || 500) : (gameState.config.prizes[0] || 500)} Bs)`}
                                 </button>
                             </div>
                         </div>
@@ -342,88 +342,114 @@ export default function DrawControl() {
         );
     }
 
+    // --- FIXED FINISHED STATE: SHOW ALL WINNERS ---
     if (gameState.status === 'finished') {
-        const lastWinner = gameState.winners?.[gameState.winners.length - 1];
+        const winners = gameState.winners || [];
 
         return (
-            <div className="bg-green-600/10 rounded-[2.5rem] border-2 border-green-500/30 p-10 relative overflow-hidden shadow-2xl backdrop-blur-md text-center">
-                <div className="relative z-10 space-y-8">
+            <div className="bg-green-600/10 rounded-[2.5rem] border-2 border-green-500/30 p-10 relative overflow-hidden shadow-2xl backdrop-blur-md text-center flex flex-col h-full">
+                <div className="relative z-10 space-y-8 flex-1 overflow-y-auto custom-scrollbar">
                     <div className="inline-block bg-green-500 text-white px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg shadow-green-500/20">
                         🏆 Sorteo Concluido
                     </div>
                     <div>
-                        <h3 className="text-4xl font-black text-white leading-tight">TENEMOS UN GANADOR</h3>
-                        <p className="text-green-500 font-black text-xs uppercase tracking-widest mt-2">Juego finalizado con éxito</p>
+                        <h3 className="text-4xl font-black text-white leading-tight">TENEMOS {winners.length > 1 ? `${winners.length} GANADORES` : 'UN GANADOR'}</h3>
+                        <p className="text-green-500 font-black text-xs uppercase tracking-widest mt-2">{winners.length > 1 ? 'Múltiples victorias registradas' : 'Juego finalizado con éxito'}</p>
                     </div>
 
-                    {lastWinner && (
-                        <div className="bg-slate-900/60 p-8 rounded-[2rem] border border-white/10 text-white max-w-sm mx-auto shadow-2xl">
-                            <div className="text-[10px] uppercase font-black tracking-[0.3em] text-slate-500 mb-4">Datos del Campeón</div>
-                            <div className="w-16 h-16 bg-gradient-to-tr from-green-600 to-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl font-black shadow-lg shadow-green-500/20">
-                                {lastWinner.userId.slice(0, 2).toUpperCase()}
-                            </div>
-                            <div className="text-xl font-black">{lastWinner.userId.slice(0, 15)}...</div>
-                            <div className="text-xs font-mono mt-1 text-green-500 font-black mb-6">CARTÓN: #{lastWinner.ticketId.slice(-6).toUpperCase()}</div>
+                    <div className="grid grid-cols-1 gap-6 max-w-4xl mx-auto">
+                        {winners.map((winner, idx) => {
+                            if (!winner || !winner.ticketId) return null;
+                            return (
+                                <div key={`${winner.ticketId}-${idx}`} className="bg-slate-900/60 p-8 rounded-[2rem] border border-white/10 text-white shadow-2xl relative group">
+                                    <div className="absolute top-4 right-4 bg-slate-800 text-[9px] px-2 py-1 rounded text-slate-400 font-mono">#{idx + 1}</div>
 
-                            {/* Payout Status Card */}
-                            <div className="bg-white/5 rounded-2xl p-5 text-left space-y-4 border border-white/5">
-                                <div className="flex justify-between items-center border-b border-white/5 pb-3">
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Estado de Pago</span>
-                                    <span className={`text-[9px] font-black px-3 py-1 rounded-lg uppercase tracking-widest
-                                        ${lastWinner.payoutStatus === 'paid' ? 'bg-green-500 text-white' :
-                                            lastWinner.payoutStatus === 'processing_payment' ? 'bg-yellow-500 text-black animate-pulse' : 'bg-slate-800 text-slate-500'}`}>
-                                        {lastWinner.payoutStatus === 'paid' ? 'PAGADO' :
-                                            lastWinner.payoutStatus === 'processing_payment' ? 'POR PAGAR' : 'ESPERANDO DATOS'}
-                                    </span>
+                                    {/* DELETE BUTTON - ONLY FOR ADMIN CLEANUP */}
+                                    <button
+                                        onClick={() => {
+                                            if (confirm("¿ELIMINAR este ganador? Úsalo solo para borrar duplicados o errores.")) {
+                                                removeWinner(winner.ticketId);
+                                            }
+                                        }}
+                                        className="absolute top-4 left-4 p-2 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                                        title="Eliminar Ganador (Error/Duplicado)"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+
+                                    <div className="text-[10px] uppercase font-black tracking-[0.3em] text-slate-500 mb-4">Datos del Campeón</div>
+                                    <div className="w-16 h-16 bg-gradient-to-tr from-green-600 to-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl font-black shadow-lg shadow-green-500/20">
+                                        {winner.userId.slice(0, 2).toUpperCase()}
+                                    </div>
+                                    <div className="text-xl font-black">{winner.userId.slice(0, 15)}...</div>
+                                    <div className="text-xs font-mono mt-1 text-green-500 font-black mb-6">CARTÓN: #{winner.ticketId.slice(-6).toUpperCase()}</div>
+
+                                    {/* Payout Status Card */}
+                                    <div className="bg-white/5 rounded-2xl p-5 text-left space-y-4 border border-white/5">
+                                        <div className="flex justify-between items-center border-b border-white/5 pb-3">
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Estado de Pago</span>
+                                            <span className={`text-[9px] font-black px-3 py-1 rounded-lg uppercase tracking-widest
+                                                ${winner.payoutStatus === 'paid' ? 'bg-green-500 text-white' :
+                                                    winner.payoutStatus === 'processing_payment' ? 'bg-yellow-500 text-black animate-pulse' : 'bg-slate-800 text-slate-500'}`}>
+                                                {winner.payoutStatus === 'paid' ? 'PAGADO' :
+                                                    winner.payoutStatus === 'processing_payment' ? 'POR PAGAR' : 'ESPERANDO DATOS'}
+                                            </span>
+                                        </div>
+
+                                        {winner.payoutStatus === 'processing_payment' && winner.paymentDetails && (
+                                            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <div className="text-[9px] uppercase text-slate-500 font-black tracking-widest mb-1">Banco</div>
+                                                        <div className="text-sm font-bold text-white">{winner.paymentDetails.bank}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-[9px] uppercase text-slate-500 font-black tracking-widest mb-1">Cédula</div>
+                                                        <div className="text-sm font-black text-white">{winner.paymentDetails.ci}</div>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-[9px] uppercase text-slate-500 font-black tracking-widest mb-1">Teléfono Mobile</div>
+                                                    <div className="text-sm font-black text-indigo-400">{winner.paymentDetails.phone}</div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-[9px] uppercase text-slate-500 font-black tracking-widest mb-1">Titular</div>
+                                                    <div className="text-sm font-black text-white">{winner.paymentDetails.name}</div>
+                                                </div>
+
+                                                <button
+                                                    onClick={() => handleMarkPaid(winner.ticketId)}
+                                                    className="w-full bg-green-500 hover:bg-green-400 text-white font-black py-4 rounded-xl mt-2 shadow-xl shadow-green-500/20 flex items-center justify-center gap-2 transition-all active:scale-95 uppercase text-[10px] tracking-widest"
+                                                >
+                                                    <CheckCircle size={16} /> CONFIRMAR PAGO ENVIADO
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {(!winner.payoutStatus || winner.payoutStatus === 'pending_info') && (
+                                            <div className="text-center text-[10px] font-bold text-slate-500 py-2 uppercase tracking-[0.2em]">
+                                                Esperando respuesta del usuario...
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
+                            );
+                        })}
+                    </div>
 
-                                {lastWinner.payoutStatus === 'processing_payment' && lastWinner.paymentDetails && (
-                                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <div className="text-[9px] uppercase text-slate-500 font-black tracking-widest mb-1">Banco</div>
-                                                <div className="text-sm font-bold text-white">{lastWinner.paymentDetails.bank}</div>
-                                            </div>
-                                            <div>
-                                                <div className="text-[9px] uppercase text-slate-500 font-black tracking-widest mb-1">Cédula</div>
-                                                <div className="text-sm font-black text-white">{lastWinner.paymentDetails.ci}</div>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <div className="text-[9px] uppercase text-slate-500 font-black tracking-widest mb-1">Teléfono Mobile</div>
-                                            <div className="text-sm font-black text-indigo-400">{lastWinner.paymentDetails.phone}</div>
-                                        </div>
-                                        <div>
-                                            <div className="text-[9px] uppercase text-slate-500 font-black tracking-widest mb-1">Titular</div>
-                                            <div className="text-sm font-black text-white">{lastWinner.paymentDetails.name}</div>
-                                        </div>
-
-                                        <button
-                                            onClick={() => handleMarkPaid(lastWinner.ticketId)}
-                                            className="w-full bg-green-500 hover:bg-green-400 text-white font-black py-4 rounded-xl mt-2 shadow-xl shadow-green-500/20 flex items-center justify-center gap-2 transition-all active:scale-95 uppercase text-[10px] tracking-widest"
-                                        >
-                                            <CheckCircle size={16} /> CONFIRMAR PAGO ENVIADO
-                                        </button>
-                                    </div>
-                                )}
-
-                                {(!lastWinner.payoutStatus || lastWinner.payoutStatus === 'pending_info') && (
-                                    <div className="text-center text-[10px] font-bold text-slate-500 py-2 uppercase tracking-[0.2em]">
-                                        Esperando respuesta del usuario...
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    <button
-                        onClick={handleArchive}
-                        disabled={isArchiving || (lastWinner && lastWinner.payoutStatus !== 'paid')}
-                        className={`bg-white text-slate-900 font-black py-5 px-12 rounded-2xl shadow-xl transition-all text-[10px] uppercase tracking-[0.3em]
-                            ${(lastWinner && lastWinner.payoutStatus !== 'paid') ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95'}`}
-                    >
-                        {isArchiving ? "PROCESANDO..." : "ARCHIVAR Y NUEVO JUEGO"}
-                    </button>
+                    <div className="pt-8 pb-4">
+                        <button
+                            onClick={handleArchive}
+                            disabled={isArchiving || winners.some(w => w.payoutStatus !== 'paid')} // Disable only if ANYONE is unpaid
+                            className={`bg-white text-slate-900 font-black py-5 px-12 rounded-2xl shadow-xl transition-all text-[10px] uppercase tracking-[0.3em]
+                                ${winners.some(w => w.payoutStatus !== 'paid') ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95'}`}
+                        >
+                            {isArchiving ? "PROCESANDO..." : "ARCHIVAR Y NUEVO JUEGO"}
+                        </button>
+                        <p className="text-[9px] text-green-200 uppercase tracking-widest mt-4 opacity-50">
+                            Debes pagar a todos los ganadores para archivar
+                        </p>
+                    </div>
                 </div>
             </div>
         )
@@ -491,8 +517,8 @@ export default function DrawControl() {
                                 <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Utilidad Estimada</span>
                             </div>
                             <div className="text-sm font-black text-emerald-100">
-                                {/* Cálculo: Total - Hoya - 500 (Premio Fijo) */}
-                                {Math.max(0, financials.totalRevenue - financials.hoya - 500).toFixed(2)} Bs
+                                {/* Cálculo: Total - Hoya - Suma de todos los Premios */}
+                                {Math.max(0, financials.totalRevenue - financials.hoya - (gameState.config.prizes.reduce((a, b) => a + b, 0))).toFixed(2)} Bs
                             </div>
                         </div>
                     </div>

@@ -1,265 +1,108 @@
 "use client";
-import { useEffect, useState } from "react";
-import ProtectedRoute from "@/components/providers/ProtectedRoute";
-import Navbar from "@/components/common/Navbar";
-import { motion, AnimatePresence } from "framer-motion";
-import { getUserTickets } from "@/lib/firebase/firestore";
-import { useAuth } from "@/components/providers/AuthProvider";
-import PaymentModal from "@/components/user/PaymentModal";
-import LiveDrawView from "@/components/user/LiveDrawView";
-import ApprovalLoader from "@/components/user/ApprovalLoader";
-import WelcomeGuide from "@/components/user/WelcomeGuide"; // Still useful for first-time specific guide
-import { subscribeToGame, GameState, trackPresence, subscribeToConnection } from "@/lib/firebase/game-actions";
-import { subscribeToUserPaymentStatus } from "@/lib/firebase/payment-listener";
-import { Trophy, Clock, Ticket, Users, CheckCircle, Play, ChevronRight, Zap } from "lucide-react";
+import { motion } from "framer-motion";
+import Link from "next/link";
+import { Gamepad2, Coins, Zap } from "lucide-react";
+import Image from "next/image";
 
-export default function Dashboard() {
-    const { user } = useAuth();
-    const [tickets, setTickets] = useState<any[]>([]);
-    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-    const [gameState, setGameState] = useState<GameState | null>(null);
-    const [isInLiveRoom, setIsInLiveRoom] = useState(false);
-    const [isConnected, setIsConnected] = useState(false);
-    // Payment approval states
-    const [paymentStatus, setPaymentStatus] = useState<'none' | 'pending' | 'approved' | 'rejected'>('none');
-    const [showApprovalLoader, setShowApprovalLoader] = useState(false);
-
-    const loadTickets = async () => {
-        if (!user) return;
-        const t = await getUserTickets(user.uid);
-        setTickets(t);
-    };
-
-    // Unified Subscriptions for Stability and Performance
-    useEffect(() => {
-        if (!user) return;
-
-        // 1. Initial Presence & Tickets
-        trackPresence(user.uid);
-        loadTickets();
-
-        // 2. Real-time Game Subscription
-        const unsubGame = subscribeToGame((state) => {
-            setGameState(state);
-        });
-
-        // 3. Real-time Payment Status Listener
-        const unsubPayment = subscribeToUserPaymentStatus(user.uid, (status) => {
-            setPaymentStatus(status);
-
-            // Auto-show loader for pending payments
-            if (status === 'pending') {
-                setShowApprovalLoader(true);
-            }
-
-            // Silent reload of tickets on approval
-            if (status === 'approved') {
-                loadTickets();
-            }
-        });
-
-        const unsubConn = subscribeToConnection(setIsConnected);
-
-        return () => {
-            unsubGame();
-            unsubPayment();
-            unsubConn();
-        };
-    }, [user]);
-
-    // 3. Auto-Enter Room Logic (Reactive to game/tickets)
-    useEffect(() => {
-        if (gameState?.status === 'active' && tickets.length > 0 && !isInLiveRoom) {
-            // Optional: Auto-enter. Commented out to avoid aggressive redirects if user wants to be in dashboard.
-            // setIsInLiveRoom(true); 
+export default function Lobby() {
+    const games = [
+        {
+            id: "bingo",
+            name: "BINGO MULTIPLAYER",
+            description: "Sorteos en vivo cada 5 minutos. ¡Gana premios instantáneos!",
+            status: "active",
+            href: "/dashboard/bingo",
+            color: "from-orange-500 to-red-600",
+            icon: <Gamepad2 size={40} className="text-white" />,
+            players: 128
+        },
+        {
+            id: "slots",
+            name: "SLOTS FORTUNA",
+            description: "Tragamonedas clásicas con jackpots progresivos.",
+            status: "coming_soon",
+            href: "#",
+            color: "from-purple-500 to-indigo-600",
+            icon: <Coins size={40} className="text-white" />,
+            players: 0
+        },
+        {
+            id: "crash",
+            name: "CRASH AVIATOR",
+            description: "Retírate antes de que el avión se estrelle. Multiplicadores x100.",
+            status: "coming_soon",
+            href: "#",
+            color: "from-emerald-500 to-teal-600",
+            icon: <Zap size={40} className="text-white" />,
+            players: 0
         }
-    }, [gameState?.status, tickets.length]);
-
-    // (Merged into one subscription effect above for stability)
-
-    // Formatters
-    const formatTime = (timestamp?: number) => {
-        if (!timestamp) return "20:00"; // Default
-        return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    };
-
-    const getMinutesRemaining = () => {
-        if (!gameState?.countdownStartTime) return 25; // Default mock
-        const diff = 300 - Math.floor((Date.now() - gameState.countdownStartTime) / 1000);
-        return Math.max(0, Math.floor(diff / 60));
-    };
-
-    // Action Handlers
-    const handleJoinGame = () => {
-        // Always enter the room directly. Buying connects inside.
-        setIsInLiveRoom(true);
-    };
-
-    const handleOpenPaymentModal = () => {
-        setIsPaymentModalOpen(true);
-    };
-
-    const handlePaymentReported = () => {
-        setIsPaymentModalOpen(false); // Close modal immediately
-        setShowApprovalLoader(true); // Show loader explicitly
-    };
-
-    const handleApprovalSuccess = async () => {
-        setShowApprovalLoader(false);
-        setIsPaymentModalOpen(false); // Double check close
-        await loadTickets();
-
-        // Intelligent Redirection
-        if (gameState?.status === 'active') {
-            setIsInLiveRoom(true);
-        }
-    };
-
-    const handleRetryPayment = () => {
-        setShowApprovalLoader(false);
-        setIsPaymentModalOpen(true);
-        // Could add specific retry logic here
-    };
+    ];
 
     return (
-        <ProtectedRoute>
-            <div className="min-h-screen bg-slate-900 pb-24 selection:bg-orange-500/30 font-sans">
-                <Navbar />
+        <div className="space-y-8 p-4 md:p-8">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 className="text-3xl font-black text-white tracking-tight">LOBBY DE JUEGOS</h1>
+                    <p className="text-slate-400">Selecciona tu sala y comienza a ganar</p>
+                </div>
+            </div>
 
-                <main className="max-w-4xl mx-auto px-6 py-8 space-y-8">
+            {/* Grid de Juegos */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {games.map((game, index) => (
+                    <motion.div
+                        key={game.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        className={`relative group overflow-hidden rounded-[2rem] border border-white/5 bg-[#161822] hover:border-white/20 transition-all duration-300 ${game.status === 'active' ? 'cursor-pointer' : 'opacity-70 cursor-not-allowed'}`}
+                    >
+                        <Link href={game.status === 'active' ? game.href : '#'} className={game.status !== 'active' ? 'pointer-events-none' : ''}>
+                            {/* Banner / Gradiente */}
+                            <div className={`h-32 bg-gradient-to-br ${game.color} p-6 flex flex-col justify-between relative`}>
+                                <div className="absolute top-0 right-0 p-32 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
 
+                                <div className="flex justify-between items-start z-10">
+                                    <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${game.status === 'active' ? 'bg-white text-black' : 'bg-black/30 text-white'}`}>
+                                        {game.status === 'active' ? 'EN VIVO' : 'PRÓXIMAMENTE'}
+                                    </span>
+                                    {game.status === 'active' && (
+                                        <span className="flex items-center gap-1.5 text-xs font-bold text-white bg-black/20 px-2 py-1 rounded-lg backdrop-blur-md">
+                                            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                                            {game.players} Jugando
+                                        </span>
+                                    )}
+                                </div>
 
+                                <div className="z-10 transform translate-y-8 group-hover:translate-y-6 transition-transform duration-300">
+                                    {game.icon}
+                                </div>
+                            </div>
 
-                    {isInLiveRoom ? (
-                        <LiveDrawView
-                            gameState={gameState}
-                            tickets={tickets}
-                            onExit={() => setIsInLiveRoom(false)}
-                            onBuyTickets={handleOpenPaymentModal}
-                        />
-                    ) : (
-                        <>
-                            {/* Welcome Header */}
-                            <header>
-                                <motion.h1
-                                    initial={{ opacity: 0, x: -20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    className="text-2xl md:text-3xl font-black text-white"
-                                >
-                                    👋 ¡Hola! <span className="text-slate-400 font-medium">Bienvenido a BingoVE</span>
-                                </motion.h1>
-                            </header>
+                            {/* Contenido */}
+                            <div className="p-6 pt-10 space-y-4">
+                                <div>
+                                    <h3 className="text-xl font-black text-white mb-1">{game.name}</h3>
+                                    <p className="text-sm text-slate-400 leading-relaxed">{game.description}</p>
+                                </div>
 
-                            {/* Game Status Card */}
-                            <section className="bg-slate-800/50 rounded-[2.5rem] p-8 border border-white/5 relative overflow-hidden">
-                                <div className="relative z-10 space-y-8">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
-                                        <span className="text-xs font-black text-orange-500 uppercase tracking-widest">Estado del Sorteo</span>
-                                    </div>
-
-                                    <div className="grid md:grid-cols-2 gap-8">
-                                        <div className="space-y-4">
-                                            <div>
-                                                <div className="text-sm text-slate-400 font-medium mb-1 flex items-center gap-2">
-                                                    <Clock size={16} /> Próximo sorteo en:
-                                                </div>
-                                                <div className="text-3xl font-black text-white">
-                                                    {gameState?.status === 'waiting' ? 'En espera'
-                                                        : gameState?.status === 'countdown' ? `${getMinutesRemaining()} minutos`
-                                                            : '¡EN CURSO!'}
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <div className="text-sm text-slate-400 font-medium mb-1">Hora inicio</div>
-                                                <div className="text-xl font-bold text-white">{gameState?.config?.startTime || "20:00"}</div>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-4 border-l border-white/5 pl-0 md:pl-8">
-                                            <div>
-                                                <div className="text-sm text-slate-400 font-medium mb-1 flex items-center gap-2">
-                                                    <Ticket size={16} /> Cartones Disponibles
-                                                </div>
-                                                <div className="text-xl font-bold text-white">
-                                                    {gameState?.config?.totalTickets || 0}/{gameState?.config?.maxTickets || 90} <span className="text-slate-500 text-sm">vendidos</span>
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <div className="text-sm text-slate-400 font-medium mb-1 flex items-center gap-2">
-                                                    <Trophy size={16} /> Premios
-                                                </div>
-                                                <div className="text-orange-400 font-bold">
-                                                    {gameState?.config?.prizes?.join(", ") || "500, 350, 200..."} Bs
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* CTA Button */}
+                                <div className="pt-2">
                                     <button
-                                        onClick={handleJoinGame}
-                                        className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-400 hover:to-red-400 text-white font-black text-lg py-5 rounded-2xl shadow-lg shadow-orange-500/20 flex items-center justify-center gap-3 transition-all transform hover:scale-[1.01] group"
+                                        disabled={game.status !== 'active'}
+                                        className={`w-full py-4 rounded-xl font-black uppercase tracking-widest text-sm transition-all flex items-center justify-center gap-2
+                      ${game.status === 'active'
+                                                ? 'bg-white text-black hover:bg-slate-200 shadow-xl shadow-white/5'
+                                                : 'bg-white/5 text-slate-500 border border-white/5'}`}
                                     >
-                                        <div className="bg-white/20 p-1 rounded-full"><Play size={20} fill="currentColor" /></div>
-                                        {tickets.length > 0 ? "ENTRAR A LA SALA" : "ÚNETE AL JUEGO"}
+                                        {game.status === 'active' ? 'JUGAR AHORA' : 'BLOQUEADO'}
                                     </button>
                                 </div>
-
-                                {/* Background Decor */}
-                                <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
-                            </section>
-
-                            {/* How it works */}
-                            <section className="space-y-4">
-                                <h3 className="text-white font-bold flex items-center gap-2">
-                                    <Zap size={20} className="text-yellow-500" />
-                                    Cómo funciona
-                                </h3>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    {[
-                                        { step: "1", text: "Compra 1-3 cartones (100 Bs c/u)" },
-                                        { step: "2", text: "Espera confirmación (2-5 min)" },
-                                        { step: "3", text: "Juega en vivo automáticamente" },
-                                        { step: "4", text: "Gana y retira al instante" }
-                                    ].map((item, i) => (
-                                        <div key={i} className="bg-slate-800/30 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-white font-black text-sm">
-                                                {item.step}
-                                            </div>
-                                            <p className="text-xs text-slate-300 font-medium leading-tight">
-                                                {item.text}
-                                            </p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </section>
-                        </>
-                    )}
-
-                    {/* Modals & Loaders Layer - Optimized for non-interference */}
-                    <AnimatePresence mode="wait">
-                        {isPaymentModalOpen ? (
-                            <PaymentModal
-                                key="payment-modal"
-                                isOpen={isPaymentModalOpen}
-                                onClose={() => setIsPaymentModalOpen(false)}
-                                onSuccess={handlePaymentReported}
-                            />
-                        ) : showApprovalLoader ? (
-                            <ApprovalLoader
-                                key="approval-loader"
-                                isVisible={showApprovalLoader}
-                                status={paymentStatus === 'none' ? 'pending' : paymentStatus}
-                                onApproved={handleApprovalSuccess}
-                                onRetry={handleRetryPayment}
-                            />
-                        ) : null}
-                    </AnimatePresence>
-
-                </main>
+                            </div>
+                        </Link>
+                    </motion.div>
+                ))}
             </div>
-        </ProtectedRoute>
+        </div>
     );
 }
