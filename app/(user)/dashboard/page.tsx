@@ -46,6 +46,12 @@ export default function Lobby() {
                     <h1 className="text-3xl font-black text-white tracking-tight">LOBBY DE JUEGOS</h1>
                     <p className="text-slate-400">Selecciona tu sala y comienza a ganar</p>
                 </div>
+                <Link href="/dashboard/wallet">
+                    <button className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-emerald-900/40">
+                        <Coins className="w-5 h-5" />
+                        Mi Billetera / Recargar
+                    </button>
+                </Link>
             </div>
 
             {/* Grid de Juegos */}

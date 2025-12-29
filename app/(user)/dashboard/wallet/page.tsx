@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+// import { Card } from '@/components/ui/card';
+// import { Button } from '@/components/ui/button';
+// import { Input } from '@/components/ui/input';
 import { Wallet, ArrowUpCircle, History, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { db } from '@/lib/firebase/config';
@@ -111,11 +111,11 @@ export default function WalletPage() {
                             <label className="text-sm text-slate-400 mb-2 block">Monto a recargar (USDT)</label>
                             <div className="relative">
                                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">$</span>
-                                <Input
+                                <input
                                     type="number"
                                     value={amount}
                                     onChange={(e) => setAmount(e.target.value)}
-                                    className="pl-8 bg-slate-950/50 border-slate-700 text-lg h-12 text-white"
+                                    className="pl-8 bg-slate-950/50 border border-slate-700 text-lg h-12 text-white w-full rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                                     placeholder="10.00"
                                     min="1"
                                 />
@@ -134,13 +134,13 @@ export default function WalletPage() {
                             ))}
                         </div>
 
-                        <Button
+                        <button
                             onClick={handleDeposit}
                             disabled={loading || !amount}
-                            className="w-full h-12 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-lg shadow-lg shadow-emerald-900/20"
+                            className="w-full h-12 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-bold text-lg shadow-lg shadow-emerald-900/20 rounded-xl transition-all"
                         >
                             {loading ? 'Procesando...' : 'Pagar con Crypto'}
-                        </Button>
+                        </button>
 
                         <p className="text-xs text-center text-slate-500 mt-4">
                             Procesado de forma segura por Cryptomus. <br />
