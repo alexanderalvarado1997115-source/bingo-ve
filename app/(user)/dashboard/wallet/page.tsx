@@ -8,18 +8,28 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { Wallet, ArrowUpCircle, History, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { db } from '@/lib/firebase/config';
-import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, onSnapshot, doc } from 'firebase/firestore';
 
 export default function WalletPage() {
-    const { user, userProfile } = useAuth();
+    const { user } = useAuth();
     const [amount, setAmount] = useState('');
     const [loading, setLoading] = useState(false);
     const [transactions, setTransactions] = useState<any[]>([]);
+    const [balance, setBalance] = useState(0);
 
     useEffect(() => {
         if (!user) return;
 
-        // Escuchar historial de pagos recientes
+        // 1. Escuchar balance en tiempo real
+        const userDocRef = doc(db, 'users', user.uid);
+        const unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                setBalance(data.walletBalance || 0);
+            }
+        });
+
+        // 2. Escuchar historial de pagos recientes
         const q = query(
             collection(db, 'payments'),
             where('userId', '==', user.uid),
@@ -27,7 +37,7 @@ export default function WalletPage() {
             limit(10)
         );
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const unsubscribePayments = onSnapshot(q, (snapshot) => {
             const txs = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data(),
@@ -36,7 +46,10 @@ export default function WalletPage() {
             setTransactions(txs);
         });
 
-        return () => unsubscribe();
+        return () => {
+            unsubscribeUser();
+            unsubscribePayments();
+        };
     }, [user]);
 
     const handleDeposit = async () => {
@@ -88,7 +101,7 @@ export default function WalletPage() {
                     <p className="text-sm text-slate-400 mb-1">Saldo Disponible</p>
                     <div className="text-3xl font-mono text-emerald-400 font-bold flex items-center gap-2">
                         <Wallet className="w-6 h-6" />
-                        ${userProfile?.walletBalance?.toFixed(2) || '0.00'} <span className="text-sm text-slate-500">USDT</span>
+                        ${balance.toFixed(2)} <span className="text-sm text-slate-500">USDT</span>
                     </div>
                 </div>
             </div>
