@@ -18,6 +18,16 @@ export interface Transaction {
     balance: number;
 }
 
+export interface TransactionFilters {
+    type?: 'income' | 'expense';
+    category?: Transaction['category'];
+    startDate?: Date;
+    endDate?: Date;
+    minAmount?: number;
+    maxAmount?: number;
+    search?: string;
+}
+
 /**
  * Registra una transacción financiera en Firestore
  */
