@@ -367,9 +367,9 @@ export default function DrawControl() {
                                     {/* DELETE BUTTON - ONLY FOR ADMIN CLEANUP */}
                                     <button
                                         onClick={() => {
-                                            if (confirm("¿ELIMINAR este ganador? Úsalo solo para borrar duplicados o errores.")) {
-                                                removeWinner(winner.ticketId);
-                                            }
+                                            // if (confirm("¿ELIMINAR este ganador? Úsalo solo para borrar duplicados o errores.")) {
+                                            //     removeWinner(winner.ticketId);
+                                            // }
                                         }}
                                         className="absolute top-4 left-4 p-2 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-xl transition-all opacity-0 group-hover:opacity-100"
                                         title="Eliminar Ganador (Error/Duplicado)"
