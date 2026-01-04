@@ -19,13 +19,15 @@ export interface Transaction {
 }
 
 export interface TransactionFilters {
-    type?: 'income' | 'expense';
-    category?: Transaction['category'];
+    type?: 'income' | 'expense' | 'all';
+    category?: Transaction['category'] | 'all';
     startDate?: Date;
     endDate?: Date;
     minAmount?: number;
     maxAmount?: number;
-    search?: string;
+    searchText?: string;
+    sortBy?: 'date' | 'amount';
+    sortOrder?: 'asc' | 'desc';
 }
 
 /**

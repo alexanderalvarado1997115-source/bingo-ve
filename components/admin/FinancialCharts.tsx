@@ -27,7 +27,7 @@ export function CashFlowChart({ data }: { data: CashFlowData[] }) {
                 📈 Flujo de Caja (Últimos 7 días)
             </h3>
             <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={data}>
+                <BarChart data={data as any}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
                     <XAxis
                         dataKey="day"
@@ -113,7 +113,7 @@ export function DistributionChart({ data }: { data: DistributionData[] }) {
             <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
                     <Pie
-                        data={data}
+                        data={data as any}
                         cx="50%"
                         cy="50%"
                         labelLine={false}
