@@ -82,7 +82,7 @@ export default function FinancialCenter() {
         const alertsRef = collection(db, 'system_alerts');
         const unsub = onSnapshot(alertsRef, (snapshot) => {
             const alertsList = snapshot.docs
-                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .map(doc => ({ id: doc.id, ...doc.data() } as any))
                 .sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0))
                 .slice(0, 5);
             setAlerts(alertsList);
@@ -184,7 +184,7 @@ export default function FinancialCenter() {
             pageSize: 20
         });
 
-        setTransactions(result.transactions);
+        setTransactions(result.transactions as Transaction[]);
         setTotalResults(result.total);
         setHasMore(result.hasMore);
         setCurrentPage(page);

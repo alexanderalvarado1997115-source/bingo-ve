@@ -546,10 +546,10 @@ export async function getComparativeData() {
 /**
  * Obtiene transacciones filtradas para la tabla con paginación.
  */
-export async function getFilteredTransactions({ page = 1, pageSize = 20, ...filters }: any) {
+export async function getFilteredTransactions({ page = 1, pageSize = 20, ...filters }: any): Promise<{ transactions: Transaction[]; total: number; hasMore: boolean }> {
     const q = query(collection(db, 'transactions'), orderBy('timestamp', 'desc'));
     const snap = await getDocs(q);
-    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction));
     const start = (page - 1) * pageSize;
     const paginated = all.slice(start, start + pageSize);
     return { transactions: paginated, total: all.length, hasMore: start + pageSize < all.length };
@@ -558,7 +558,7 @@ export async function getFilteredTransactions({ page = 1, pageSize = 20, ...filt
 /**
  * Estadísticas de hoy (ingresos, egresos, neto).
  */
-export async function getTodayStats() {
+export async function getTodayStats(): Promise<{ income: number; expenses: number; net: number; transactionCount: number }> {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
