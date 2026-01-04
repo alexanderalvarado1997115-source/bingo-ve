@@ -36,7 +36,7 @@ export async function POST(request: Request) {
                 return NextResponse.json({ success: true, message: 'Already processed' });
             }
 
-            // 3. Actualizar estado del pago y el balance del usuario
+            // 3. Actualizar estado del pago
             await updateDoc(paymentRef, {
                 status: 'completed',
                 externalId: payment_id,
@@ -45,19 +45,20 @@ export async function POST(request: Request) {
                 updatedAt: serverTimestamp()
             });
 
-            // 4. Acreditar saldo usando la función segura que sincroniza RealtimeDB y Firestore
-            await recordTransactionSafe({
-                userId: paymentData.userId,
-                amount: paymentData.amount, // Usamos el monto original de la orden para evitar discrepancias de cambio
-                type: 'income',
-                category: 'deposit',
-                description: `Recarga automática (NOWPayments #${payment_id})`,
-                metadata: {
-                    gateway: 'nowpayments',
-                    paymentId: payment_id,
-                    orderId: order_id
-                }
+            // 4. Acreditar saldo en la billetera del usuario
+            const userRef = doc(db, 'users', paymentData.userId);
+            await updateDoc(userRef, {
+                walletBalance: increment(paymentData.amount)
             });
+
+            // 5. Registrar transacción en los estados financieros del sistema
+            await recordTransactionSafe(
+                'income',
+                'system_adjustment', // Usamos system_adjustment por ahora, o actualizamos la interfaz
+                paymentData.amount,
+                `Recarga automática (NOWPayments #${payment_id})`,
+                order_id
+            );
 
             console.log(`✅ Balance updated for user: ${paymentData.userId}`);
         }
