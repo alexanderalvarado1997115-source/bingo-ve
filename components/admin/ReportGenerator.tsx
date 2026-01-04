@@ -14,6 +14,7 @@ interface ReportGeneratorProps {
         income: number;
         expenses: number;
         net: number;
+        transactionCount: number;
     };
 }
 
@@ -354,8 +355,8 @@ export default function ReportGenerator({ transactions, financials, todayStats }
                         <button
                             onClick={() => setReportType('daily')}
                             className={`p-4 rounded-xl border transition-all ${reportType === 'daily'
-                                    ? 'bg-indigo-600 border-indigo-500 text-white'
-                                    : 'bg-[#161822] border-white/5 text-slate-400 hover:border-indigo-500/50'
+                                ? 'bg-indigo-600 border-indigo-500 text-white'
+                                : 'bg-[#161822] border-white/5 text-slate-400 hover:border-indigo-500/50'
                                 }`}
                         >
                             <Calendar size={20} className="mx-auto mb-2" />
@@ -364,8 +365,8 @@ export default function ReportGenerator({ transactions, financials, todayStats }
                         <button
                             onClick={() => setReportType('weekly')}
                             className={`p-4 rounded-xl border transition-all ${reportType === 'weekly'
-                                    ? 'bg-indigo-600 border-indigo-500 text-white'
-                                    : 'bg-[#161822] border-white/5 text-slate-400 hover:border-indigo-500/50'
+                                ? 'bg-indigo-600 border-indigo-500 text-white'
+                                : 'bg-[#161822] border-white/5 text-slate-400 hover:border-indigo-500/50'
                                 }`}
                         >
                             <Calendar size={20} className="mx-auto mb-2" />
@@ -374,8 +375,8 @@ export default function ReportGenerator({ transactions, financials, todayStats }
                         <button
                             onClick={() => setReportType('monthly')}
                             className={`p-4 rounded-xl border transition-all ${reportType === 'monthly'
-                                    ? 'bg-indigo-600 border-indigo-500 text-white'
-                                    : 'bg-[#161822] border-white/5 text-slate-400 hover:border-indigo-500/50'
+                                ? 'bg-indigo-600 border-indigo-500 text-white'
+                                : 'bg-[#161822] border-white/5 text-slate-400 hover:border-indigo-500/50'
                                 }`}
                         >
                             <Calendar size={20} className="mx-auto mb-2" />

@@ -1,5 +1,10 @@
 "use client";
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
+import {
+    RefreshCw, TrendingUp, DollarSign, BarChart3, Zap, Shield,
+    CheckCircle2, AlertTriangle, ArrowUpRight, ArrowDownRight,
+    Settings, ChevronLeft, ChevronRight, Trophy, Search, Filter, X
+} from "lucide-react";
 import { onValue, ref } from "firebase/database";
 import { db, realtimeDb } from "@/lib/firebase/config";
 import { getTransactionHistory, getTodayStats, updateFinancialConfig, Transaction, getWeeklyChartData, getFilteredTransactions, TransactionFilters, getKPIMetrics, getProjections, getComparativeData, checkAndGenerateAlerts } from "@/lib/firebase/financial-actions";
