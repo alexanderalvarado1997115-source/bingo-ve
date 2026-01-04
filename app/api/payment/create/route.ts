@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { cryptomus } from '@/lib/cryptomus';
+import { nowpayments } from '@/lib/nowpayments';
 import { db } from '@/lib/firebase/config';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
@@ -12,44 +12,43 @@ export async function POST(request: Request) {
         }
 
         // 1. Crear registro de "Intento de Pago" en Firestore
-        // Esto nos da un ID único para rastrear (order_id)
         const paymentDoc = await addDoc(collection(db, 'payments'), {
             userId,
             userEmail: email || 'unknown',
             amount: parseFloat(amount),
-            currency: 'USD', // Base interna
+            currency: 'USD',
             status: 'pending',
             type: 'wallet_deposit',
+            gateway: 'nowpayments',
             createdAt: serverTimestamp(),
             description: description || 'Recarga de saldo'
         });
 
         const orderId = paymentDoc.id;
 
-        // 2. Solicitar pago a Cryptomus
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+        // 2. Solicitar pago a NOWPayments
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://bingo-ve-delta.vercel.app';
 
-        const paymentData = {
-            amount: amount.toString(),
-            currency: 'USDT', // Cobramos en USDT
+        const npResponse = await nowpayments.createInvoice({
+            price_amount: parseFloat(amount),
+            price_currency: 'usd',
+            pay_currency: 'usdttrc20', // USDT en la red Tron por defecto
             order_id: orderId,
-            url_return: `${baseUrl}/dashboard/wallet?status=success&order=${orderId}`,
-            url_callback: `${baseUrl}/api/webhooks/cryptomus`, // URL donde Cryptomus avisará
-            is_payment_multiple: false,
-            lifetime: 3600 // 1 hora para pagar
-        };
-
-        const cryptomusResponse = await cryptomus.createPayment(paymentData);
+            order_description: description || `Recarga de saldo BingoVE - Orden ${orderId}`,
+            ipn_callback_url: `${baseUrl}/api/webhooks/nowpayments`,
+            success_url: `${baseUrl}/dashboard/wallet?status=success&order=${orderId}`,
+            cancel_url: `${baseUrl}/dashboard/wallet?status=error`
+        });
 
         // 3. Devolver la URL de pago al frontend
         return NextResponse.json({
             success: true,
-            paymentUrl: cryptomusResponse.result.url,
+            paymentUrl: npResponse.invoice_url,
             orderId: orderId
         });
 
     } catch (error) {
-        console.error("Error creating payment:", error);
+        console.error("Error creating NOWPayments invoice:", error);
         return NextResponse.json({ error: 'Failed to create payment' }, { status: 500 });
     }
 }
