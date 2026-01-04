@@ -1,6 +1,6 @@
 import { realtimeDb, db } from "./config";
 import { ref, set, get, update, onValue, onDisconnect, serverTimestamp, runTransaction } from "firebase/database";
-import { collection, getDocs, deleteDoc, doc, writeBatch, addDoc, serverTimestamp as firestoreTimestamp } from "firebase/firestore";
+import { collection, getDocs, deleteDoc, doc, writeBatch, addDoc, query, where, serverTimestamp as firestoreTimestamp } from "firebase/firestore";
 
 const GAME_STATE_PATH = "game/active";
 const PRESENCE_PATH = "presence/users";
@@ -193,10 +193,11 @@ export const drawNextBall = async () => {
     let topPlayers: { name: string, missing: number }[] = [];
 
     try {
-        const ticketsSnap = await getDocs(collection(db, "tickets"));
+        const q = query(collection(db, "tickets"), where("drawId", "==", state.drawId));
+        const ticketsSnap = await getDocs(q);
         const tickets = ticketsSnap.docs.map(d => d.data());
 
-        const projections = tickets.map(t => {
+        const projections = tickets.map((t: any) => {
             const missing = t.numbers.filter((n: number) => !newHistory.includes(n)).length;
             // Get name from user meta or generic
             return {
@@ -205,8 +206,8 @@ export const drawNextBall = async () => {
             };
         });
 
-        const minMissing = Math.min(...projections.map(p => p.missing), 25);
-        topPlayers = projections.filter(p => p.missing <= 3).sort((a, b) => a.missing - b.missing).slice(0, 5);
+        const minMissing = Math.min(...projections.map((p: any) => p.missing), 25);
+        topPlayers = projections.filter((p: any) => p.missing <= 3).sort((a: any, b: any) => a.missing - b.missing).slice(0, 5);
 
         if (minMissing === 1) {
             tensionLevel = 'imminent';

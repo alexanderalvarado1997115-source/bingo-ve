@@ -1,5 +1,5 @@
-import { collection, addDoc, serverTimestamp, query, orderBy, limit, getDocs, where, writeBatch, doc, updateDoc } from "firebase/firestore";
-import { ref, get, update } from "firebase/database";
+import { collection, addDoc, serverTimestamp, query, orderBy, limit, getDocs, where, writeBatch, doc, updateDoc, getCountFromServer } from "firebase/firestore";
+import { ref, get, update, runTransaction } from "firebase/database";
 import { db, realtimeDb } from "./config";
 
 /**
@@ -104,7 +104,20 @@ export async function recordTransactionSafe(
             firestoreId: firestoreDocId
         });
 
-        // Paso 5: Verificación de integridad (ambos existen)
+        // Paso 5: Actualizar Balance Agregado (SINCRONIZACIÓN CRÍTICA)
+        const netAmount = type === 'expense' ? -Math.abs(amount) : Math.abs(amount);
+        const hoyaInc = type === 'income' ? (netAmount * 0.20) : 0; // 20% Hoya por defecto
+
+        await runTransaction(ref(realtimeDb, 'financials'), (current) => {
+            const data = current || { totalRevenue: 0, hoya: 0 };
+            return {
+                ...data,
+                totalRevenue: Number(data.totalRevenue || 0) + netAmount,
+                hoya: Number(data.hoya || 0) + hoyaInc
+            };
+        });
+
+        // Paso 6: Verificación de integridad (ambos existen)
         const [firestoreCheck, rtdbCheck] = await Promise.all([
             getDocs(query(collection(db, 'transactions'), where('__name__', '==', firestoreDocId), limit(1))),
             get(ref(realtimeDb, `financials/ledger/${firestoreDocId}`))
@@ -273,14 +286,24 @@ export async function checkAndGenerateAlerts(
 
 
 /**
- * Obtiene métricas KPI del día actual.
+ * Obtiene métricas KPI (Últimos 30 días para rendimiento).
  */
 export async function getKPIMetrics() {
     try {
-        const snapshot = await getDocs(collection(db, 'transactions'));
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const q = query(
+            collection(db, 'transactions'),
+            where('timestamp', '>=', thirtyDaysAgo),
+            orderBy('timestamp', 'desc')
+        );
+        const snapshot = await getDocs(q);
+
         let income = 0,
             expenses = 0,
             tickets = 0;
+
         snapshot.forEach(doc => {
             const data = doc.data() as any;
             if (data.type === 'income') {
@@ -290,11 +313,13 @@ export async function getKPIMetrics() {
                 expenses += Math.abs(data.amount);
             }
         });
+
         const totalRevenue = income - expenses;
         const roi = totalRevenue !== 0 ? (totalRevenue / (expenses || 1)) * 100 : 0;
         const avgTicketPrice = tickets ? income / tickets : 0;
         const conversionRate = tickets ? (tickets / (snapshot.size || 1)) * 100 : 0;
-        const salesVelocity = tickets / 24; // tickets per hour as simple estimate
+        const salesVelocity = tickets / (30 * 24); // tickets per hour in last 30 days
+
         return {
             roi,
             avgTicketPrice,
@@ -544,15 +569,35 @@ export async function getComparativeData() {
 }
 
 /**
- * Obtiene transacciones filtradas para la tabla con paginación.
+ * Obtiene transacciones filtradas para la tabla con paginación REAL.
  */
 export async function getFilteredTransactions({ page = 1, pageSize = 20, ...filters }: any): Promise<{ transactions: Transaction[]; total: number; hasMore: boolean }> {
-    const q = query(collection(db, 'transactions'), orderBy('timestamp', 'desc'));
-    const snap = await getDocs(q);
-    const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction));
+    let qBase = collection(db, 'transactions') as any;
+
+    // 1. Construir filtros
+    if (filters.type) qBase = query(qBase, where('type', '==', filters.type));
+    if (filters.category) qBase = query(qBase, where('category', '==', filters.category));
+
+    // 2. Obtener Conteo Total de forma eficiente (Metadata only)
+    const countSnapshot = await getCountFromServer(qBase);
+    const total = countSnapshot.data().count;
+
+    // 3. Obtener Datos Paginados
+    // Nota: El SDK de cliente no tiene offset. Para páginas específicas, cargamos hasta la página actual.
+    const qData = query(qBase, orderBy('timestamp', 'desc'), limit(page * pageSize));
+    const snap = await getDocs(qData);
+
     const start = (page - 1) * pageSize;
-    const paginated = all.slice(start, start + pageSize);
-    return { transactions: paginated, total: all.length, hasMore: start + pageSize < all.length };
+    const allDocs = snap.docs;
+    const paginatedDocs = allDocs.slice(start);
+
+    const transactions = paginatedDocs.map(d => ({ id: d.id, ...(d.data() as any) } as Transaction));
+
+    return {
+        transactions,
+        total,
+        hasMore: start + pageSize < total
+    };
 }
 
 /**
