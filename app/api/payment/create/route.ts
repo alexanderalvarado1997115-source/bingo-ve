@@ -47,8 +47,12 @@ export async function POST(request: Request) {
             orderId: orderId
         });
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error creating NOWPayments invoice:", error);
-        return NextResponse.json({ error: 'Failed to create payment' }, { status: 500 });
+        // Devolvemos el mensaje real para que el usuario pueda verlo en el alert del navegador
+        return NextResponse.json({
+            error: error.message || 'Failed to create payment',
+            details: error.toString()
+        }, { status: 500 });
     }
 }
