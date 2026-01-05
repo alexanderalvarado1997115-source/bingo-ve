@@ -8,7 +8,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { Wallet, ArrowUpCircle, History, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { db } from '@/lib/firebase/config';
-import { collection, query, where, orderBy, limit, onSnapshot, doc } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, onSnapshot, doc, addDoc, serverTimestamp } from 'firebase/firestore';
 
 export default function WalletPage() {
     const { user } = useAuth();
@@ -60,10 +60,27 @@ export default function WalletPage() {
 
         setLoading(true);
         try {
+            // 1. Crear el registro preliminar en Firestore desde el cliente (donde hay permisos)
+            const paymentDoc = await addDoc(collection(db, 'payments'), {
+                userId: user?.uid,
+                userEmail: user?.email || 'unknown',
+                amount: parseFloat(amount),
+                currency: 'USD',
+                status: 'pending',
+                type: 'wallet_deposit',
+                gateway: 'nowpayments',
+                createdAt: serverTimestamp(),
+                description: "Recarga de Saldo"
+            });
+
+            const orderId = paymentDoc.id;
+
+            // 2. Llamar al servidor solo para obtener el link de NOWPayments
             const response = await fetch('/api/payment/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    orderId: orderId, // Enviamos el ID ya creado
                     amount: parseFloat(amount),
                     userId: user?.uid,
                     email: user?.email,
@@ -74,7 +91,7 @@ export default function WalletPage() {
             const data = await response.json();
 
             if (data.success && data.paymentUrl) {
-                // Redirigir a Cryptomus (o a nuestra página de mock en dev)
+                // Redirigir a la pasarela
                 window.location.href = data.paymentUrl;
             } else {
                 alert("Error al iniciar el pago: " + (data.error || "Desconocido"));

@@ -5,26 +5,14 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 export async function POST(request: Request) {
     try {
-        const { amount, userId, email, description } = await request.json();
+        const { amount, userId, email, description, orderId: clientOrderId } = await request.json();
 
         if (!amount || !userId) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
-        // 1. Crear registro de "Intento de Pago" en Firestore
-        const paymentDoc = await addDoc(collection(db, 'payments'), {
-            userId,
-            userEmail: email || 'unknown',
-            amount: parseFloat(amount),
-            currency: 'USD',
-            status: 'pending',
-            type: 'wallet_deposit',
-            gateway: 'nowpayments',
-            createdAt: serverTimestamp(),
-            description: description || 'Recarga de saldo'
-        });
-
-        const orderId = paymentDoc.id;
+        // Usamos el ID enviado por el cliente o generamos uno (aunque el cliente debería enviarlo siempre ahora)
+        const orderId = clientOrderId || `np_${Date.now()}`;
 
         // 2. Solicitar pago a NOWPayments
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://bingo-ve-delta.vercel.app';
