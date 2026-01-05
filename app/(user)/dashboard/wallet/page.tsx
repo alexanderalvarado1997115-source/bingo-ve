@@ -156,8 +156,8 @@ export default function WalletPage() {
                         </button>
 
                         <p className="text-xs text-center text-slate-500 mt-4">
-                            Procesado de forma segura por Cryptomus. <br />
-                            Aceptamos USDT, BTC, ETH y más.
+                            Procesado de forma segura por NOWPayments. <br />
+                            Aceptamos USDT (TRC20), BTC, LTC y más.
                         </p>
                     </div>
                 </motion.div>
@@ -182,9 +182,9 @@ export default function WalletPage() {
                             transactions.map((tx) => (
                                 <div key={tx.id} className="flex items-center justify-between p-3 bg-slate-950/30 rounded-xl border border-slate-800/50">
                                     <div className="flex items-center gap-3">
-                                        {tx.status === 'approved' ? (
+                                        {tx.status === 'completed' || tx.status === 'finished' ? (
                                             <CheckCircle className="w-5 h-5 text-emerald-500" />
-                                        ) : tx.status === 'pending' ? (
+                                        ) : tx.status === 'pending' || tx.status === 'waiting' ? (
                                             <Clock className="w-5 h-5 text-yellow-500" />
                                         ) : (
                                             <XCircle className="w-5 h-5 text-red-500" />
@@ -196,7 +196,7 @@ export default function WalletPage() {
                                             </p>
                                         </div>
                                     </div>
-                                    <span className={`font-mono font-bold ${tx.status === 'approved' ? 'text-emerald-400' : 'text-slate-400'}`}>
+                                    <span className={`font-mono font-bold ${tx.status === 'completed' || tx.status === 'finished' ? 'text-emerald-400' : 'text-slate-400'}`}>
                                         +${tx.amount}
                                     </span>
                                 </div>

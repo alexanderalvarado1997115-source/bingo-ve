@@ -52,7 +52,7 @@ export const nowpayments = {
         }
 
         try {
-            const response = await fetch(`${NOWPAYMENTS_API_URL}/payment`, {
+            const response = await fetch(`${NOWPAYMENTS_API_URL}/invoice`, {
                 method: 'POST',
                 headers: {
                     'x-api-key': API_KEY,
