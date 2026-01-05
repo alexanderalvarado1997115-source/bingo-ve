@@ -2,9 +2,7 @@ import crypto from 'crypto';
 
 const NOWPAYMENTS_API_URL = 'https://api.nowpayments.io/v1';
 
-// Estas claves se configuran en Vercel
-const API_KEY = process.env.NOWPAYMENTS_API_KEY || '';
-const IPN_SECRET = process.env.NOWPAYMENTS_IPN_SECRET || '';
+// Las claves se leen dinámicamente dentro de las funciones para evitar caché en Vercel
 
 interface CreateInvoicePayload {
     price_amount: number;
@@ -22,6 +20,7 @@ export const nowpayments = {
      * Valida la firma del webhook (IPN) para asegurar que el pago es real
      */
     verifyIPN(payload: any, headerSignature: string): boolean {
+        const IPN_SECRET = process.env.NOWPAYMENTS_IPN_SECRET || '';
         if (!IPN_SECRET) return true; // En desarrollo
 
         const orderedPayload = Object.keys(payload)
@@ -42,8 +41,13 @@ export const nowpayments = {
      * Crea una factura de pago
      */
     async createInvoice(data: CreateInvoicePayload) {
+        // Leemos las variables dentro de la función para mayor seguridad en Vercel
+        const API_KEY = process.env.NOWPAYMENTS_API_KEY || '';
+
         if (!API_KEY) {
-            console.warn("⚠️ NOWPayments API Key missing. Running in Mock Mode.");
+            console.error("❌ ERROR: NOWPayments API Key not found in Environment Variables.");
+            console.log("Available Env Vars (Keys):", Object.keys(process.env).filter(k => k.includes('NOWPAYMENTS')));
+
             return {
                 invoice_id: "mock_" + Date.now(),
                 invoice_url: `https://bingo-ve-delta.vercel.app/mock-payment?orderId=${data.order_id}`,
